@@ -36,7 +36,8 @@ def sync_channels() -> list[dict]:
                 "name": ch["name"],
                 "channel_id": resolved_id,
                 "playlist_id": playlist_id,
-                "matinale_start": ch.get("matinale_start", "08:00"),
+                "matinale_start": ch.get("matinale_start", "07:00"),
+                "matinale_end":   ch.get("matinale_end",   "12:00"),
                 "title_hints": ch.get("title_hints", []),
             })
         except Exception as e:
@@ -58,9 +59,23 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
         new_count = 0
 
         try:
-            # Collecte tous les lives candidats
+            # Fenêtre spécifique à la chaîne (avec tolérance ±30 min)
+            start_h, start_m = map(int, ch["matinale_start"].split(":"))
+            end_h,   end_m   = map(int, ch["matinale_end"].split(":"))
+            window_start = start_h * 60 + start_m - 30  # en minutes depuis minuit
+            window_end   = end_h   * 60 + end_m   + 30
+
+            def in_window(published_at: str) -> bool:
+                from datetime import datetime, timezone
+                dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+                minutes = dt.hour * 60 + dt.minute
+                return window_start <= minutes <= window_end
+
+            # Collecte tous les lives candidats dans la fenêtre de la chaîne
             by_day: dict[str, list[dict]] = defaultdict(list)
             for video in yt.fetch_recent_videos(ch["playlist_id"], since):
+                if not in_window(video["published_at"]):
+                    continue
                 day = video["published_at"][:10]
                 by_day[day].append(video)
 

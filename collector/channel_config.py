@@ -1,5 +1,6 @@
 # Ajouter une chaîne : copier un bloc, renseigner name + handle ou channel_id, active=True.
-# Le channel_id est résolu automatiquement depuis le handle au premier lancement.
+# matinale_start / matinale_end : heure UTC+0 (= heure de Dakar, pas de décalage)
+# title_hints : mots-clés du nom de l'émission pour aider le scorer
 
 CHANNELS = [
     {
@@ -7,29 +8,33 @@ CHANNELS = [
         "handle": "@tfmsn",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",  # heure UTC (= heure Dakar)
+        "matinale_start": "07:00",
+        "matinale_end":   "11:00",
     },
     {
         "name": "RTS",
         "handle": "@rts-radiotelevisionsenegalaise",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",
-        "title_hints": ["kenkelibaa"],  # mot-clé caractéristique de la matinale RTS
+        "matinale_start": "07:30",
+        "matinale_end":   "11:00",
+        "title_hints": ["kenkelibaa"],
     },
     {
         "name": "2STV",
         "handle": "@2stvsenegal",
         "channel_id": "UCeLEGbj240J6JhpP7ba8GwA",  # confirmé
         "active": True,
-        "matinale_start": "07:30",
+        "matinale_start": "07:00",
+        "matinale_end":   "10:30",
     },
     {
         "name": "Sen TV",
         "handle": "@GroupeDMEDIACOM",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",
+        "matinale_start": "07:30",
+        "matinale_end":   "11:00",
         "title_hints": ["bloc matinale", "bloc matin"],
     },
     {
@@ -38,34 +43,41 @@ CHANNELS = [
         "channel_id": None,
         "active": True,
         "matinale_start": "07:00",
+        "matinale_end":   "10:30",
+        "title_hints": ["réveil", "reveil", "r'eveil"],
     },
     {
         "name": "Solo Media Group",
         "handle": "@SOLOMEDIAGROUP-f9g1c",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",
+        "matinale_start": "07:30",
+        "matinale_end":   "11:00",
+        "title_hints": ["la matinale d'infos", "matinale d'infos", "matinale infos"],
     },
     {
         "name": "Xalaat TV",
         "handle": "@Xalaattv",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",
+        "matinale_start": "07:00",
+        "matinale_end":   "11:00",
     },
     {
         "name": "Solution TV",
         "handle": "@solutioninfotv",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",
+        "matinale_start": "07:00",
+        "matinale_end":   "11:00",
     },
     {
         "name": "Sans Limites TV",
         "handle": "@SanslimitesTV",
         "channel_id": None,
         "active": True,
-        "matinale_start": "08:00",
+        "matinale_start": "07:30",
+        "matinale_end":   "11:00",
         "title_hints": ["café actu", "cafe actu"],
     },
     {
@@ -73,6 +85,7 @@ CHANNELS = [
         "handle": "@SenewebTV",
         "channel_id": None,
         "active": True,
-        "matinale_start": "09:00",
+        "matinale_start": "08:00",
+        "matinale_end":   "12:00",
     },
 ]
