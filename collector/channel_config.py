@@ -15,6 +15,7 @@ CHANNELS = [
         "channel_id": None,
         "active": True,
         "matinale_start": "08:00",
+        "title_hints": ["kenkelibaa"],  # mot-clé caractéristique de la matinale RTS
     },
     {
         "name": "2STV",

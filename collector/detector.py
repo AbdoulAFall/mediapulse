@@ -37,6 +37,7 @@ def sync_channels() -> list[dict]:
                 "channel_id": resolved_id,
                 "playlist_id": playlist_id,
                 "matinale_start": ch.get("matinale_start", "08:00"),
+                "title_hints": ch.get("title_hints", []),
             })
         except Exception as e:
             print(f"ERREUR : {e}")
@@ -64,7 +65,10 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
                 by_day[day].append(video)
 
             # Pour chaque jour : sélectionner le meilleur candidat
+            # On amorce l'historique avec les title_hints de la config
             historical_titles = storage.get_recent_matinale_titles(ch["db_id"])
+            if not historical_titles and ch.get("title_hints"):
+                historical_titles = ch["title_hints"]
 
             for day, candidates in sorted(by_day.items()):
                 if len(candidates) > 1:
