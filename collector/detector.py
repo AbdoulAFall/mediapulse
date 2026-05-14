@@ -13,7 +13,7 @@ import youtube_client as yt
 import storage
 import scorer
 
-LOOKBACK_DAYS = 60
+DEFAULT_LOOKBACK_DAYS = 60
 
 
 def sync_channels() -> list[dict]:
@@ -43,13 +43,13 @@ def sync_channels() -> list[dict]:
     return active
 
 
-def detect_matinales(channels: list[dict]) -> int:
+def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) -> int:
     """
     Pour chaque chaîne, collecte tous les lives de la fenêtre matinale
     sur les 60 derniers jours, groupe par jour, sélectionne le meilleur
     candidat et l'insère en base.
     """
-    since = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
     total_new = 0
 
     for ch in channels:
@@ -88,9 +88,9 @@ def detect_matinales(channels: list[dict]) -> int:
     return total_new
 
 
-def refresh_view_counts():
-    """Snapshot des vues pour les matinales des 60 derniers jours non mises à jour depuis 6h."""
-    rows = storage.get_matinale_ids_last_n_days(LOOKBACK_DAYS)
+def refresh_view_counts(days: int = DEFAULT_LOOKBACK_DAYS):
+    """Snapshot des vues pour les matinales des N derniers jours non mises à jour depuis 6h."""
+    rows = storage.get_matinale_ids_last_n_days(days)
     if not rows:
         print("  Aucune mise à jour nécessaire.")
         return

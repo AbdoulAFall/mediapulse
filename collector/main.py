@@ -2,11 +2,13 @@
 MediaPulse — Collecteur de matinales TV sénégalaises
 
 Commandes :
-  python main.py sync    — Synchronise les chaînes + détecte les matinales + refresh vues
-  python main.py detect  — Détecte uniquement les nouvelles matinales
-  python main.py refresh — Met à jour les vues uniquement
-  python main.py stats   — Affiche le rapport des 60 derniers jours
-  python main.py stats 30 — Rapport sur les 30 derniers jours
+  python main.py sync          — Sync 60 derniers jours (détection + vues)
+  python main.py sync 730      — Sync 2 ans en arrière
+  python main.py detect        — Détecte uniquement les nouvelles matinales (60j)
+  python main.py detect 730    — Détecte sur 2 ans
+  python main.py refresh       — Met à jour les vues uniquement
+  python main.py stats         — Rapport des 60 derniers jours
+  python main.py stats 730     — Rapport sur 2 ans
 """
 import sys
 import os
@@ -25,44 +27,62 @@ import storage
 import detector
 import report
 
+DEFAULT_DAYS = 60
 
-def cmd_sync():
-    print("\n[1/3] Initialisation base de données...")
+
+def _parse_days(args: list[str], position: int = 1) -> int:
+    if len(args) > position:
+        try:
+            days = int(args[position])
+            if days < 1 or days > 730:
+                print(f"⚠  Période invalide : {days}. Valeur acceptée : 1–730 jours.")
+                sys.exit(1)
+            return days
+        except ValueError:
+            print(f"⚠  '{args[position]}' n'est pas un nombre de jours valide.")
+            sys.exit(1)
+    return DEFAULT_DAYS
+
+
+def cmd_sync(days: int = DEFAULT_DAYS):
+    print(f"\n[1/4] Initialisation base de données...")
     storage.init_db()
 
-    print("[2/3] Résolution des chaînes YouTube...")
+    print(f"[2/4] Résolution des chaînes YouTube...")
     channels = detector.sync_channels()
 
     if not channels:
         print("Aucune chaîne active configurée.")
         return
 
-    print(f"\n[3/4] Détection des matinales (60 derniers jours)...")
-    new = detector.detect_matinales(channels)
+    print(f"\n[3/4] Détection des matinales ({days} derniers jours)...")
+    if days > 60:
+        print(f"      ⏳ Historique long — cette opération peut prendre 20–30 min.")
+    new = detector.detect_matinales(channels, days=days)
 
-    print(f"\n[4/4] Refresh des compteurs de vues...")
-    detector.refresh_view_counts()
+    print(f"\n[4/4] Refresh des compteurs de vues ({days}j)...")
+    detector.refresh_view_counts(days=days)
 
     print(f"\n✓ Sync terminé — {new} nouvelle(s) matinale(s) détectée(s).\n")
 
 
-def cmd_detect():
+def cmd_detect(days: int = DEFAULT_DAYS):
     storage.init_db()
-    print("\n[1/2] Résolution des chaînes...")
+    print(f"\n[1/2] Résolution des chaînes...")
     channels = detector.sync_channels()
-    print("\n[2/2] Détection des matinales...")
-    new = detector.detect_matinales(channels)
+    print(f"\n[2/2] Détection des matinales ({days}j)...")
+    new = detector.detect_matinales(channels, days=days)
     print(f"\n✓ {new} nouvelle(s) matinale(s) détectée(s).\n")
 
 
-def cmd_refresh():
+def cmd_refresh(days: int = DEFAULT_DAYS):
     storage.init_db()
-    print("\nRefresh des compteurs de vues...")
-    detector.refresh_view_counts()
+    print(f"\nRefresh des compteurs de vues ({days}j)...")
+    detector.refresh_view_counts(days=days)
     print()
 
 
-def cmd_stats(days: int = 60):
+def cmd_stats(days: int = DEFAULT_DAYS):
     storage.init_db()
     report.print_stats(days)
 
@@ -82,14 +102,8 @@ def main():
         sys.exit(1)
 
     cmd = args[0]
-    if cmd == "stats" and len(args) > 1:
-        try:
-            COMMANDS[cmd](int(args[1]))
-        except ValueError:
-            print("Usage : python main.py stats [JOURS]")
-            sys.exit(1)
-    else:
-        COMMANDS[cmd]()
+    days = _parse_days(args)
+    COMMANDS[cmd](days)
 
 
 if __name__ == "__main__":
