@@ -28,6 +28,7 @@ CHANNELS = [
         "active": True,
         "matinale_start": "07:00",
         "matinale_end":   "10:30",
+        "title_hints": ["matin bonheur"],
     },
     {
         "name": "Sen TV",
@@ -89,5 +90,6 @@ CHANNELS = [
         "active": True,
         "matinale_start": "08:00",
         "matinale_end":   "12:00",
+        "title_hints": ["matinale.sn", "matinale sn"],
     },
 ]
