@@ -30,13 +30,25 @@ import detector
 def get_db_url() -> str | None:
     return os.environ.get("DATABASE_URL")
 
+@st.cache_resource
+def get_pool():
+    from psycopg2 import pool
+    return pool.SimpleConnectionPool(
+        minconn=1, maxconn=5,
+        dsn=get_db_url(),
+        cursor_factory=psycopg2.extras.RealDictCursor,
+    )
+
 def query(sql: str, params=()) -> pd.DataFrame:
-    conn = psycopg2.connect(get_db_url(), cursor_factory=psycopg2.extras.RealDictCursor)
-    with conn.cursor() as cur:
-        cur.execute(sql, params or None)
-        rows = cur.fetchall()
-    conn.close()
-    return pd.DataFrame([dict(r) for r in rows])
+    pool = get_pool()
+    conn = pool.getconn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params or None)
+            rows = cur.fetchall()
+        return pd.DataFrame([dict(r) for r in rows])
+    finally:
+        pool.putconn(conn)
 
 # ── Données ──────────────────────────────────────────────────
 @st.cache_data(ttl=300)
