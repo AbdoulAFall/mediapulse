@@ -27,10 +27,11 @@ import storage
 import detector
 
 # ── DB ───────────────────────────────────────────────────────
-storage.init_db()
+def get_db_url() -> str | None:
+    return os.environ.get("DATABASE_URL")
 
 def query(sql: str, params=()) -> pd.DataFrame:
-    conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=psycopg2.extras.RealDictCursor)
+    conn = psycopg2.connect(get_db_url(), cursor_factory=psycopg2.extras.RealDictCursor)
     with conn.cursor() as cur:
         cur.execute(sql, params or None)
         rows = cur.fetchall()
@@ -119,6 +120,17 @@ with st.sidebar:
 
     st.divider()
     st.caption("Les données se rafraîchissent automatiquement toutes les 5 min.")
+
+# ── Vérification DB ──────────────────────────────────────────
+if not get_db_url():
+    st.error("Variable DATABASE_URL manquante. Configure-la dans les secrets Streamlit.")
+    st.stop()
+
+try:
+    storage.init_db()
+except Exception as e:
+    st.error(f"Impossible de se connecter à la base de données : {e}")
+    st.stop()
 
 # ── Header ───────────────────────────────────────────────────
 st.title("📺 MediaPulse Sénégal")
