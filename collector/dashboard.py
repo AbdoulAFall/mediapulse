@@ -1,8 +1,8 @@
 import sqlite3
 import os
+import sys
 from pathlib import Path
-from collections import defaultdict
-from datetime import datetime, timedelta
+from io import StringIO
 
 import streamlit as st
 import pandas as pd
@@ -14,8 +14,14 @@ st.set_page_config(
     layout="wide",
 )
 
+# ── Imports collecteur ───────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).parent))
+import storage
+import detector
+
 # ── DB ───────────────────────────────────────────────────────
 DB_PATH = Path(__file__).parent.parent / "mediapulse.db"
+storage.init_db()
 
 def query(sql: str, params=()) -> pd.DataFrame:
     conn = sqlite3.connect(DB_PATH)
@@ -48,6 +54,62 @@ def load_data(days: int) -> pd.DataFrame:
         ORDER BY m.published_at DESC
     """)
 
+# ── Sidebar — Contrôles de sync ──────────────────────────────
+with st.sidebar:
+    st.header("Synchronisation")
+
+    if st.button("Sync rapide (60 jours)", use_container_width=True, type="primary"):
+        with st.status("Synchronisation en cours...", expanded=True) as status:
+            try:
+                st.write("Résolution des chaînes...")
+                channels = detector.sync_channels()
+                st.write(f"{len(channels)} chaîne(s) résolue(s)")
+
+                st.write("Détection des matinales...")
+                new = detector.detect_matinales(channels, days=60)
+                st.write(f"{new} nouvelle(s) matinale(s)")
+
+                st.write("Refresh des vues...")
+                detector.refresh_view_counts(days=60)
+
+                status.update(label="Sync terminé ✓", state="complete")
+                st.cache_data.clear()
+            except Exception as e:
+                status.update(label=f"Erreur : {e}", state="error")
+
+    st.divider()
+
+    st.markdown("**Backfill historique**")
+    st.caption("Remonte jusqu'à 2 ans en arrière. Durée estimée : 20–30 min.")
+
+    confirm = st.checkbox("Je confirme le lancement du backfill")
+
+    if st.button(
+        "Backfill 2 ans",
+        use_container_width=True,
+        type="secondary",
+        disabled=not confirm,
+    ):
+        with st.status("Backfill en cours (2 ans)...", expanded=True) as status:
+            try:
+                st.write("Résolution des chaînes...")
+                channels = detector.sync_channels()
+
+                st.write("Récupération de l'historique (peut prendre ~20 min)...")
+                new = detector.detect_matinales(channels, days=730)
+                st.write(f"{new} nouvelle(s) matinale(s) détectée(s)")
+
+                st.write("Refresh des vues...")
+                detector.refresh_view_counts(days=730)
+
+                status.update(label=f"Backfill terminé — {new} matinales ✓", state="complete")
+                st.cache_data.clear()
+            except Exception as e:
+                status.update(label=f"Erreur : {e}", state="error")
+
+    st.divider()
+    st.caption("Les données se rafraîchissent automatiquement toutes les 5 min.")
+
 # ── Header ───────────────────────────────────────────────────
 st.title("📺 MediaPulse Sénégal")
 st.caption("Monitoring des matinales TV — 6h00 à 10h00 (UTC)")
@@ -55,12 +117,20 @@ st.caption("Monitoring des matinales TV — 6h00 à 10h00 (UTC)")
 # ── Filtres ──────────────────────────────────────────────────
 col_f1, col_f2 = st.columns([2, 4])
 with col_f1:
-    days = st.selectbox("Période", [7, 14, 30, 60], index=3, format_func=lambda d: f"{d} derniers jours")
+    days = st.selectbox(
+        "Période",
+        [7, 14, 30, 60, 180, 365, 730],
+        index=3,
+        format_func=lambda d: {
+            7: "7 derniers jours", 14: "14 derniers jours", 30: "30 derniers jours",
+            60: "60 derniers jours", 180: "6 mois", 365: "1 an", 730: "2 ans",
+        }[d],
+    )
 
 df = load_data(days)
 
 if df.empty:
-    st.warning("Aucune donnée. Lance d'abord : python main.py sync")
+    st.info("Aucune donnée pour cette période. Lance un sync depuis le panneau gauche.")
     st.stop()
 
 df["published_at"] = pd.to_datetime(df["published_at"])
@@ -121,7 +191,7 @@ table["lien"] = "https://www.youtube.com/watch?v=" + df["youtube_video_id"]
 
 table = table.sort_values("vues", ascending=False).rename(columns={
     "date": "Date", "chaîne": "Chaîne", "titre": "Titre",
-    "vues": "Vues", "likes": "Likes", "durée": "Durée", "lien": "Lien YouTube"
+    "vues": "Vues", "likes": "Likes", "durée": "Durée", "lien": "Lien YouTube",
 })
 
 st.dataframe(
@@ -131,5 +201,5 @@ st.dataframe(
     column_config={
         "Lien YouTube": st.column_config.LinkColumn("Lien YouTube"),
         "Vues": st.column_config.NumberColumn(format="%d"),
-    }
+    },
 )
