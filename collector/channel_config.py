@@ -30,6 +30,7 @@ CHANNELS = [
         "channel_id": None,
         "active": True,
         "matinale_start": "08:00",
+        "title_hints": ["bloc matinale", "bloc matin"],
     },
     {
         "name": "Walf TV",
