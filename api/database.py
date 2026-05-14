@@ -13,8 +13,12 @@ def get_pool():
         if "sslmode" not in url:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}sslmode=require"
-        _pool = pool.SimpleConnectionPool(1, 10, dsn=url,
-                                          cursor_factory=psycopg2.extras.RealDictCursor)
+        _pool = pool.SimpleConnectionPool(
+            1, 10,
+            dsn=url,
+            cursor_factory=psycopg2.extras.RealDictCursor,
+            connect_timeout=10,
+        )
     return _pool
 
 

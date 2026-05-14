@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from database import query
@@ -28,8 +28,9 @@ def get_channels():
 
 @router.get("/stats", response_model=StatsResponse)
 def get_stats(days: int = Query(60, ge=1, le=730)):
-    since = _since(days)
-    rows = query("""
+    try:
+        since = _since(days)
+        rows = query("""
         SELECT
             c.name,
             COUNT(m.id)            AS matinales_count,
@@ -48,22 +49,24 @@ def get_stats(days: int = Query(60, ge=1, le=730)):
         ORDER BY total_views DESC
     """, (since,))
 
-    channels = [
-        ChannelStats(
-            name=r["name"],
-            matinales_count=r["matinales_count"] or 0,
-            total_views=int(r["total_views"] or 0),
-            avg_views=int(r["avg_views"] or 0),
-            total_likes=int(r["total_likes"] or 0),
+        channels = [
+            ChannelStats(
+                name=r["name"],
+                matinales_count=r["matinales_count"] or 0,
+                total_views=int(r["total_views"] or 0),
+                avg_views=int(r["avg_views"] or 0),
+                total_likes=int(r["total_likes"] or 0),
+            )
+            for r in rows
+        ]
+        return StatsResponse(
+            channels=channels,
+            total_matinales=sum(c.matinales_count for c in channels),
+            total_views=sum(c.total_views for c in channels),
+            period_days=days,
         )
-        for r in rows
-    ]
-    return StatsResponse(
-        channels=channels,
-        total_matinales=sum(c.matinales_count for c in channels),
-        total_views=sum(c.total_views for c in channels),
-        period_days=days,
-    )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/matinales", response_model=list[Matinale])
