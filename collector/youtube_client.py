@@ -8,13 +8,14 @@ import requests
 API_KEY = os.environ.get("YOUTUBE_API_KEY", "")
 BASE = "https://www.googleapis.com/youtube/v3"
 
-# Plage matinale : 06h00–11h00 UTC+0 (Dakar)
-# Élargie à 11h pour capturer les lives qui démarrent un peu en retard
-MATINALE_START_H = 5
-MATINALE_END_H = 11
+# Plage matinale : 04h00–13h00 UTC+0 (Dakar)
+# Large pour couvrir les chaînes qui publient en décalé
+MATINALE_START_H = 4
+MATINALE_END_H = 13
 
-# Durée minimale d'un live matinal (30 min) pour éliminer les courts clips
-MIN_DURATION_S = 30 * 60
+# Durée minimale d'une matinale (20 min) pour éliminer les courts clips
+MIN_DURATION_S = 20 * 60
+
 
 
 def _get(endpoint: str, **params) -> dict:
@@ -98,31 +99,29 @@ def fetch_recent_videos(playlist_id: str, since: datetime) -> Iterator[dict]:
             for v in vdata.get("items", []):
                 vid = v["id"]
                 live = v.get("liveStreamingDetails")
-
-                # Filtre 1 : doit être un live
-                if not live:
-                    continue
-
+                title = snippet_map[vid]["title"]
                 duration = _parse_duration(v["contentDetails"].get("duration"))
 
-                # Filtre 2 : durée minimale 30 min
+                # Durée minimale 20 min (filtre anti-clips courts)
                 if duration and duration < MIN_DURATION_S:
                     continue
 
-                # Heure de début réelle du live (plus fiable que published_at)
+                # Uniquement les lives
+                if not live:
+                    continue
+
                 start_time = (
                     live.get("actualStartTime")
                     or live.get("scheduledStartTime")
                     or snippet_map[vid]["published_at"]
                 )
 
-                # Filtre 3 : dans la plage horaire matinale
                 if not _is_in_matinale_window(start_time):
                     continue
 
                 yield {
                     "youtube_video_id": vid,
-                    "title": snippet_map[vid]["title"],
+                    "title": title,
                     "published_at": start_time,
                     "duration_seconds": duration,
                 }
