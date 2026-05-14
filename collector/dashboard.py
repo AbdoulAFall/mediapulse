@@ -216,20 +216,36 @@ st.divider()
 # ── Tableau détaillé ─────────────────────────────────────────
 st.subheader("Détail des matinales")
 
-table = df[["date", "chaîne", "titre", "vues", "likes", "duration_seconds"]].copy()
+table = df[["date", "chaîne", "titre", "published_at", "duration_seconds", "vues", "likes"]].copy()
+
+# Heure de début (UTC → heure Dakar = UTC+0, donc identique)
+table["début"] = pd.to_datetime(table["published_at"]).dt.strftime("%H:%M")
+
+# Heure de fin = début + durée
+def calc_end(row):
+    if row["duration_seconds"] and row["duration_seconds"] > 0:
+        from datetime import datetime, timedelta, timezone
+        start = pd.to_datetime(row["published_at"])
+        end = start + timedelta(seconds=int(row["duration_seconds"]))
+        return end.strftime("%H:%M")
+    return "—"
+
+table["fin"] = table.apply(calc_end, axis=1)
+
 table["durée"] = table["duration_seconds"].apply(
     lambda s: f"{int(s)//3600}h{(int(s)%3600)//60:02d}m" if s and s > 0 else "—"
 )
-table = table.drop(columns="duration_seconds")
 table["lien"] = "https://www.youtube.com/watch?v=" + df["youtube_video_id"]
 
+table = table.drop(columns=["duration_seconds", "published_at"])
 table = table.sort_values("vues", ascending=False).rename(columns={
     "date": "Date", "chaîne": "Chaîne", "titre": "Titre",
-    "vues": "Vues", "likes": "Likes", "durée": "Durée", "lien": "Lien YouTube",
+    "début": "Début", "fin": "Fin", "durée": "Durée",
+    "vues": "Vues", "likes": "Likes", "lien": "Lien YouTube",
 })
 
 st.dataframe(
-    table,
+    table[["Date", "Chaîne", "Titre", "Début", "Fin", "Durée", "Vues", "Likes", "Lien YouTube"]],
     use_container_width=True,
     hide_index=True,
     column_config={

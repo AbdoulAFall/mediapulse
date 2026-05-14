@@ -10,6 +10,7 @@ CHANNELS = [
         "active": True,
         "matinale_start": "07:00",
         "matinale_end":   "11:00",
+        "title_hints": ["infos matin"],
     },
     {
         "name": "RTS",
