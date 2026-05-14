@@ -1,9 +1,9 @@
-import sqlite3
 import os
 import sys
 from pathlib import Path
-from io import StringIO
 
+import psycopg2
+import psycopg2.extras
 import streamlit as st
 import pandas as pd
 
@@ -20,21 +20,24 @@ import storage
 import detector
 
 # ── DB ───────────────────────────────────────────────────────
-DB_PATH = Path(__file__).parent.parent / "mediapulse.db"
 storage.init_db()
 
 def query(sql: str, params=()) -> pd.DataFrame:
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(sql, conn, params=params)
+    conn = psycopg2.connect(os.environ["DATABASE_URL"], cursor_factory=psycopg2.extras.RealDictCursor)
+    with conn.cursor() as cur:
+        cur.execute(sql, params or None)
+        rows = cur.fetchall()
     conn.close()
-    return df
+    return pd.DataFrame([dict(r) for r in rows])
 
 # ── Données ──────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_data(days: int) -> pd.DataFrame:
-    return query(f"""
+    from datetime import datetime, timedelta, timezone
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    return query("""
         SELECT
-            c.name AS chaîne,
+            c.name AS "chaîne",
             m.youtube_video_id,
             m.title AS titre,
             m.published_at,
@@ -50,9 +53,9 @@ def load_data(days: int) -> pd.DataFrame:
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
         )
-        WHERE m.published_at >= datetime('now', '-{days} days')
+        WHERE m.published_at >= %s
         ORDER BY m.published_at DESC
-    """)
+    """, (since,))
 
 # ── Sidebar — Contrôles de sync ──────────────────────────────
 with st.sidebar:

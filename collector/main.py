@@ -107,8 +107,10 @@ def main():
 
 
 if __name__ == "__main__":
-    if not os.environ.get("YOUTUBE_API_KEY"):
-        print("\n⚠  Variable YOUTUBE_API_KEY manquante.")
-        print("   Copie .env.example → .env et renseigne ta clé.\n")
+    missing = [v for v in ("YOUTUBE_API_KEY", "DATABASE_URL") if not os.environ.get(v)]
+    if missing:
+        for v in missing:
+            print(f"\n⚠  Variable {v} manquante.")
+        print("   Copie .env.example → .env et renseigne les valeurs.\n")
         sys.exit(1)
     main()
