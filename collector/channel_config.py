@@ -63,6 +63,7 @@ CHANNELS = [
         "active": True,
         "matinale_start": "07:00",
         "matinale_end":   "11:00",
+        "title_hints": ["lu xew tay"],
     },
     {
         "name": "Solution TV",
