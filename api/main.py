@@ -1,20 +1,15 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routers import stats
+from routers import stats
 
 app = FastAPI(title="MediaPulse API", version="1.0.0")
 
-# CORS — autoriser le frontend Vercel
-origins = [
-    "http://localhost:3000",
-    os.environ.get("FRONTEND_URL", "https://mediapulse.vercel.app"),
-]
-
+# CORS — autoriser le frontend Vercel + localhost
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["GET"],
     allow_headers=["*"],
 )

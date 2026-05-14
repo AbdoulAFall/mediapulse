@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Query
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
-from api.database import query
-from api.models import StatsResponse, ChannelStats, Matinale, TimelinePoint
+from database import query
+from models import StatsResponse, ChannelStats, Matinale, TimelinePoint
 
 router = APIRouter(prefix="/api", tags=["stats"])
 
