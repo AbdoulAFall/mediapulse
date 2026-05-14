@@ -7,6 +7,11 @@ import psycopg2.extras
 import streamlit as st
 import pandas as pd
 
+# ── Secrets Streamlit Cloud → variables d'environnement ──────
+for _k in ("DATABASE_URL", "YOUTUBE_API_KEY"):
+    if _k not in os.environ and _k in st.secrets:
+        os.environ[_k] = st.secrets[_k]
+
 # ── Config page ──────────────────────────────────────────────
 st.set_page_config(
     page_title="MediaPulse Sénégal",
@@ -15,7 +20,9 @@ st.set_page_config(
 )
 
 # ── Imports collecteur ───────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).parent))
+_collector_dir = Path(__file__).parent
+if str(_collector_dir) not in sys.path:
+    sys.path.insert(0, str(_collector_dir))
 import storage
 import detector
 
