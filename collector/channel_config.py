@@ -22,13 +22,19 @@ CHANNELS = [
     },
     {
         "name": "Sen TV",
-        "handle": "@sentvsenegal",
+        "handle": "@GroupeDMEDIACOM",
         "channel_id": None,
         "active": True,
     },
     {
         "name": "Walf TV",
-        "handle": "@WalfTv",
+        "handle": "@WalfadjriTV",
+        "channel_id": None,
+        "active": True,
+    },
+    {
+        "name": "Solo Media Group",
+        "handle": "@SOLOMEDIAGROUP-f9g1c",
         "channel_id": None,
         "active": True,
     },
