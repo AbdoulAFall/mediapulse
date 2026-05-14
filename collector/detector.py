@@ -1,21 +1,23 @@
 """
 Détection et collecte des matinales pour toutes les chaînes actives.
+
+Logique de sélection par journée :
+  - Un seul live dans la fenêtre → c'est la matinale
+  - Plusieurs lives → scorer.pick_best() choisit selon heure attendue + titres historiques
 """
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
 from channel_config import CHANNELS
 import youtube_client as yt
 import storage
+import scorer
+
+LOOKBACK_DAYS = 60
 
 
-LOOKBACK_DAYS = 60  # fenêtre de collecte
-
-
-def sync_channels():
-    """
-    Résout les channel_id/playlist_id manquants et les persiste en base.
-    Retourne la liste des chaînes actives avec leurs infos DB.
-    """
+def sync_channels() -> list[dict]:
+    """Résout channel_id/playlist_id et persiste en base. Retourne les chaînes actives."""
     active = []
     for ch in CHANNELS:
         if not ch["active"]:
@@ -34,6 +36,7 @@ def sync_channels():
                 "name": ch["name"],
                 "channel_id": resolved_id,
                 "playlist_id": playlist_id,
+                "matinale_start": ch.get("matinale_start", "08:00"),
             })
         except Exception as e:
             print(f"ERREUR : {e}")
@@ -42,25 +45,43 @@ def sync_channels():
 
 def detect_matinales(channels: list[dict]) -> int:
     """
-    Parcourt les 60 derniers jours pour chaque chaîne,
-    filtre les vidéos publiées 06h–10h UTC, les insère en base.
-    Retourne le nombre de nouvelles matinales détectées.
+    Pour chaque chaîne, collecte tous les lives de la fenêtre matinale
+    sur les 60 derniers jours, groupe par jour, sélectionne le meilleur
+    candidat et l'insère en base.
     """
     since = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
     total_new = 0
 
     for ch in channels:
-        print(f"  → {ch['name']} : recherche matinales depuis {since.date()}...")
+        print(f"  → {ch['name']} (matinale attendue vers {ch['matinale_start']} UTC)...")
         new_count = 0
+
         try:
+            # Collecte tous les lives candidats
+            by_day: dict[str, list[dict]] = defaultdict(list)
             for video in yt.fetch_recent_videos(ch["playlist_id"], since):
-                if not yt.is_matinale(video["published_at"]):
-                    continue
-                matinale_id = storage.insert_matinale(ch["db_id"], video)
+                day = video["published_at"][:10]
+                by_day[day].append(video)
+
+            # Pour chaque jour : sélectionner le meilleur candidat
+            historical_titles = storage.get_recent_matinale_titles(ch["db_id"])
+
+            for day, candidates in sorted(by_day.items()):
+                if len(candidates) > 1:
+                    print(f"     {day} : {len(candidates)} lives candidats → scoring...")
+                    best = scorer.pick_best(candidates, ch["matinale_start"], historical_titles)
+                else:
+                    best = candidates[0]
+
+                matinale_id = storage.insert_matinale(ch["db_id"], best)
                 if matinale_id is not None:
                     new_count += 1
-            print(f"     {new_count} nouvelle(s) matinale(s)")
+                    # Enrichit l'historique pour les jours suivants
+                    historical_titles = [best["title"]] + historical_titles[:29]
+
+            print(f"     {new_count} nouvelle(s) matinale(s) sur {len(by_day)} jour(s)")
             total_new += new_count
+
         except Exception as e:
             print(f"     ERREUR : {e}")
 
@@ -68,10 +89,7 @@ def detect_matinales(channels: list[dict]) -> int:
 
 
 def refresh_view_counts():
-    """
-    Prend un snapshot des vues pour toutes les matinales des 60 derniers jours
-    qui n'ont pas été mises à jour depuis 6h.
-    """
+    """Snapshot des vues pour les matinales des 60 derniers jours non mises à jour depuis 6h."""
     rows = storage.get_matinale_ids_last_n_days(LOOKBACK_DAYS)
     if not rows:
         print("  Aucune mise à jour nécessaire.")

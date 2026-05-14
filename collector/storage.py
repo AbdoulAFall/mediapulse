@@ -122,6 +122,17 @@ def get_matinales_for_stats(days: int = 60) -> list[sqlite3.Row]:
         """, (f"-{days} days",)).fetchall()
 
 
+def get_recent_matinale_titles(channel_db_id: int, limit: int = 30) -> list[str]:
+    """Retourne les titres des dernières matinales confirmées pour une chaîne."""
+    with get_conn() as conn:
+        rows = conn.execute("""
+            SELECT title FROM matinales
+            WHERE channel_id = ? AND title IS NOT NULL
+            ORDER BY published_at DESC LIMIT ?
+        """, (channel_db_id, limit)).fetchall()
+        return [r["title"] for r in rows]
+
+
 def get_matinale_ids_last_n_days(days: int = 60) -> list[sqlite3.Row]:
     """Returns (id, youtube_video_id) for matinales without a recent snapshot."""
     with get_conn() as conn:
