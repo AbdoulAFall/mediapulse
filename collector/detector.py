@@ -2,8 +2,9 @@
 Détection et collecte des matinales pour toutes les chaînes actives.
 
 Logique de sélection par journée :
-  - Un seul live dans la fenêtre → c'est la matinale
-  - Plusieurs lives → scorer.pick_best() choisit selon heure attendue + titres historiques
+  - Week-ends ignorés (pas de matinale samedi/dimanche)
+  - Si title_hints configuré : filtre dur (le titre doit contenir au moins un hint)
+  - Si pas de title_hints : scorer.pick_best() choisit selon heure attendue + titres historiques
 """
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
@@ -12,6 +13,17 @@ from channel_config import CHANNELS
 import youtube_client as yt
 import storage
 import scorer
+
+
+def _matches_hints(title: str, hints: list[str]) -> bool:
+    """True si le titre contient au moins un des mots-clés configurés (insensible à la casse)."""
+    title_lower = title.lower()
+    return any(hint.lower() in title_lower for hint in hints)
+
+
+def _is_weekend(day_str: str) -> bool:
+    """True si la date (YYYY-MM-DD) est un samedi (5) ou dimanche (6)."""
+    return datetime.strptime(day_str, "%Y-%m-%d").weekday() >= 5
 
 DEFAULT_LOOKBACK_DAYS = 60
 
@@ -85,7 +97,21 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
             if not historical_titles and ch.get("title_hints"):
                 historical_titles = ch["title_hints"]
 
+            hints = ch.get("title_hints", [])
+
             for day, candidates in sorted(by_day.items()):
+                # ── Filtre week-end ──────────────────────────────────────
+                if _is_weekend(day):
+                    continue
+
+                # ── Filtre par title_hints (filtre dur si configuré) ─────
+                if hints:
+                    candidates = [c for c in candidates if _matches_hints(c["title"], hints)]
+                    if not candidates:
+                        print(f"     {day} : aucun live ne correspond aux title_hints → ignoré")
+                        continue
+
+                # ── Sélection du meilleur candidat ───────────────────────
                 if len(candidates) > 1:
                     print(f"     {day} : {len(candidates)} lives candidats → scoring...")
                     best = scorer.pick_best(candidates, ch["matinale_start"], historical_titles)
