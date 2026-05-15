@@ -4,7 +4,12 @@ on:
   schedule:
     - cron: '0 13 * * *'   # 13h00 UTC tous les jours
     - cron: '0 18 * * *'   # 18h00 UTC tous les jours
-  workflow_dispatch:         # déclenchement manuel depuis GitHub
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Nombre de jours à synchroniser (1–730)'
+        default: '60'
+        required: false
 
 jobs:
   sync:
@@ -31,4 +36,4 @@ jobs:
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python main.py sync 60
+        run: python main.py sync ${{ github.event.inputs.days || '60' }}
