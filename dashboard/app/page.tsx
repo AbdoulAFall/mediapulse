@@ -1,5 +1,6 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import useSWR from "swr";
 import { fetchStats, fetchMatinales, fetchTimeline, StatsResponse, Matinale } from "@/lib/api";
 import KPICards from "@/components/KPICards";
 import ViewsChart from "@/components/ViewsChart";
@@ -15,34 +16,49 @@ const PERIODS = [
   { label: "2 ans", value: 730 },
 ];
 
+// SWR config globale : cache 5 min, pas de refetch au focus
+const SWR_OPTIONS = {
+  dedupingInterval: 5 * 60 * 1000, // 5 min
+  revalidateOnFocus: false,
+  errorRetryCount: 2,
+};
+
 export default function Dashboard() {
   const [days, setDays] = useState(60);
-  const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [matinales, setMatinales] = useState<Matinale[]>([]);
-  const [timeline, setTimeline] = useState<Record<string, number | string>[]>([]);
   const [selectedChannel, setSelectedChannel] = useState<string | undefined>();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    Promise.all([
-      fetchStats(days),
-      fetchMatinales(days, selectedChannel),
-      fetchTimeline(days),
-    ])
-      .then(([s, m, t]) => {
-        setStats(s);
-        setMatinales(m);
-        setTimeline(t);
-      })
-      .catch((err) => {
-        setError(err?.message ?? "Erreur de chargement des données.");
-      })
-      .finally(() => setLoading(false));
-  }, [days, selectedChannel]);
+  // ── Fetches avec cache SWR ─────────────────────────────────
+  const {
+    data: stats,
+    error: statsError,
+    isLoading: statsLoading,
+  } = useSWR<StatsResponse>(
+    ["stats", days],
+    () => fetchStats(days),
+    SWR_OPTIONS
+  );
 
+  const {
+    data: matinales,
+    error: matinalesError,
+    isLoading: matinalesLoading,
+  } = useSWR<Matinale[]>(
+    ["matinales", days, selectedChannel],
+    () => fetchMatinales(days, selectedChannel),
+    SWR_OPTIONS
+  );
+
+  const {
+    data: timeline,
+    isLoading: timelineLoading,
+  } = useSWR<Record<string, number | string>[]>(
+    ["timeline", days],
+    () => fetchTimeline(days),
+    SWR_OPTIONS
+  );
+
+  const loading = statsLoading || matinalesLoading || timelineLoading;
+  const error = statsError || matinalesError;
   const channels = stats?.channels.map((c) => c.name) ?? [];
 
   return (
@@ -126,30 +142,29 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Erreur */}
+        {/* Erreur API */}
         {error && (
           <div
             className="rounded-xl p-5 mb-8 text-sm"
             style={{ background: "#2d1b1b", border: "1px solid #7f1d1d", color: "#fca5a5" }}
           >
-            ⚠️ {error} — Vérifie que l&apos;API Railway est bien déployée.
+            ⚠️ Impossible de contacter l&apos;API — vérifie que Railway est bien déployé.
           </div>
         )}
 
         {/* Skeleton loading */}
-        {loading && !stats && (
+        {statsLoading && !stats ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="skeleton rounded-xl" style={{ height: 100 }} />
             ))}
           </div>
+        ) : (
+          stats && <KPICards stats={stats} />
         )}
 
-        {/* KPIs */}
-        {stats && <KPICards stats={stats} />}
-
         {/* Charts */}
-        {loading && !stats ? (
+        {statsLoading && !stats ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <div className="skeleton rounded-xl" style={{ height: 320 }} />
             <div className="skeleton rounded-xl" style={{ height: 320 }} />
@@ -157,15 +172,15 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {stats && <ViewsChart channels={stats.channels} />}
-            {timeline.length > 0 && <TimelineChart data={timeline} />}
+            {timeline && timeline.length > 0 && <TimelineChart data={timeline} />}
           </div>
         )}
 
         {/* Table */}
-        {loading && !matinales.length ? (
+        {matinalesLoading && !matinales ? (
           <div className="skeleton rounded-xl" style={{ height: 300 }} />
         ) : (
-          matinales.length > 0 && <MatinalesTable matinales={matinales} />
+          matinales && matinales.length > 0 && <MatinalesTable matinales={matinales} />
         )}
       </main>
     </div>
