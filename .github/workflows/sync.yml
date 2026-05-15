@@ -2,8 +2,9 @@ name: MediaPulse — Sync matinales
 
 on:
   schedule:
-    - cron: '0 13 * * *'   # 13h00 UTC tous les jours
-    - cron: '0 18 * * *'   # 18h00 UTC tous les jours
+    - cron: '0,30 6-11 * * 1-5'  # Toutes les 30 min, 6h-11h30, lun-ven (matinales)
+    - cron: '0 13 * * *'          # 13h00 UTC tous les jours (refresh vues après-midi)
+    - cron: '0 18 * * *'          # 18h00 UTC tous les jours (refresh vues soirée)
   workflow_dispatch:
     inputs:
       days:
