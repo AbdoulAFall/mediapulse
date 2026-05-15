@@ -129,6 +129,57 @@ def get_matinales(
     return result
 
 
+@router.get("/schedule")
+def get_schedule(days: int = Query(60, ge=1, le=730)):
+    """Horaires moyens de début/fin par chaîne sur la période."""
+    since = _since(days)
+    rows = query("""
+        SELECT
+            c.name AS channel,
+            AVG(
+                EXTRACT(HOUR FROM m.published_at) * 60 +
+                EXTRACT(MINUTE FROM m.published_at)
+            ) AS avg_start_min,
+            AVG(
+                EXTRACT(HOUR FROM m.published_at) * 60 +
+                EXTRACT(MINUTE FROM m.published_at) +
+                COALESCE(m.duration_seconds, 0) / 60.0
+            ) AS avg_end_min,
+            AVG(m.duration_seconds)  AS avg_duration_s,
+            STDDEV(
+                EXTRACT(HOUR FROM m.published_at) * 60 +
+                EXTRACT(MINUTE FROM m.published_at)
+            ) AS stddev_start_min,
+            COUNT(m.id) AS episode_count
+        FROM matinales m
+        JOIN channels c ON c.id = m.channel_id
+        WHERE m.published_at >= %s
+          AND c.active = 1
+          AND m.duration_seconds IS NOT NULL
+          AND m.duration_seconds > 0
+        GROUP BY c.name
+        ORDER BY avg_start_min ASC
+    """, (since,))
+
+    result = []
+    for r in rows:
+        start = int(r["avg_start_min"] or 0)
+        end   = int(r["avg_end_min"]   or 0)
+        dur   = int(r["avg_duration_s"] or 0)
+        std   = float(r["stddev_start_min"] or 0)
+        result.append({
+            "channel":        r["channel"],
+            "avg_start":      f"{start // 60:02d}:{start % 60:02d}",
+            "avg_end":        f"{end   // 60:02d}:{end   % 60:02d}",
+            "avg_start_min":  start,
+            "avg_end_min":    end,
+            "avg_duration":   _fmt_duration(dur),
+            "punctuality_min": round(std, 1),
+            "episode_count":  r["episode_count"],
+        })
+    return result
+
+
 @router.get("/timeline")
 def get_timeline(days: int = Query(60, ge=1, le=730)):
     since = _since(days)

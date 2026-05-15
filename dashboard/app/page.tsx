@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
 import useSWR from "swr";
-import { fetchStats, fetchMatinales, fetchTimeline, StatsResponse, Matinale } from "@/lib/api";
+import { fetchStats, fetchMatinales, fetchTimeline, fetchSchedule, StatsResponse, Matinale, ScheduleEntry } from "@/lib/api";
 import KPICards from "@/components/KPICards";
 import ViewsChart from "@/components/ViewsChart";
 import TimelineChart from "@/components/TimelineChart";
 import MatinalesTable from "@/components/MatinalesTable";
+import ScheduleGuide from "@/components/ScheduleGuide";
 
 const PERIODS = [
   { label: "7 jours", value: 7 },
@@ -54,6 +55,12 @@ export default function Dashboard() {
   } = useSWR<Record<string, number | string>[]>(
     ["timeline", days],
     () => fetchTimeline(days),
+    SWR_OPTIONS
+  );
+
+  const { data: schedule } = useSWR<ScheduleEntry[]>(
+    ["schedule", days],
+    () => fetchSchedule(days),
     SWR_OPTIONS
   );
 
@@ -175,6 +182,9 @@ export default function Dashboard() {
             {timeline && timeline.length > 0 && <TimelineChart data={timeline} />}
           </div>
         )}
+
+        {/* Guide des horaires */}
+        {schedule && schedule.length > 0 && <ScheduleGuide data={schedule} />}
 
         {/* Table */}
         {matinalesLoading && !matinales ? (

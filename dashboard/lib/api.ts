@@ -54,3 +54,20 @@ export async function fetchChannels(): Promise<{ id: number; name: string }[]> {
   if (!res.ok) throw new Error("Erreur API channels");
   return res.json();
 }
+
+export interface ScheduleEntry {
+  channel: string;
+  avg_start: string;
+  avg_end: string;
+  avg_start_min: number;
+  avg_end_min: number;
+  avg_duration: string | null;
+  punctuality_min: number;
+  episode_count: number;
+}
+
+export async function fetchSchedule(days: number): Promise<ScheduleEntry[]> {
+  const res = await fetch(`${API_URL}/api/schedule?days=${days}`);
+  if (!res.ok) throw new Error("Erreur API schedule");
+  return res.json();
+}
