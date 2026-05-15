@@ -37,9 +37,8 @@ export default function TimelineChart({
   if (!hasViews) {
     return (
       <div
-        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+        style={{ background: "var(--surface)", border: "1px solid var(--border)", minHeight: 320 }}
         className="rounded-xl p-5 mb-6 flex flex-col items-center justify-center"
-        style2={{ minHeight: 320 }}
       >
         <p className="text-3xl mb-3">📊</p>
         <p className="font-medium" style={{ color: "var(--text-muted)" }}>
