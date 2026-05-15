@@ -1,0 +1,196 @@
+"use client";
+import { useState } from "react";
+import useSWR from "swr";
+import {
+  fetchStats, fetchMatinales, fetchTimeline, fetchSchedule,
+  StatsResponse, Matinale, ScheduleEntry,
+} from "@/lib/api";
+import KPICards      from "@/components/KPICards";
+import ViewsChart    from "@/components/ViewsChart";
+import TimelineChart from "@/components/TimelineChart";
+import MatinalesTable from "@/components/MatinalesTable";
+import ScheduleGuide from "@/components/ScheduleGuide";
+
+const PERIODS = [
+  { label: "7 j",   value: 7   },
+  { label: "30 j",  value: 30  },
+  { label: "60 j",  value: 60  },
+  { label: "6 mois",value: 180 },
+  { label: "1 an",  value: 365 },
+  { label: "2 ans", value: 730 },
+];
+
+const SWR_OPTIONS = {
+  dedupingInterval: 5 * 60 * 1000,
+  revalidateOnFocus: false,
+  errorRetryCount: 2,
+};
+
+function today() {
+  return new Date().toLocaleDateString("fr-FR", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+}
+
+export default function Dashboard() {
+  const [days, setDays] = useState(60);
+  const [selectedChannel, setSelectedChannel] = useState<string | undefined>();
+
+  const { data: stats,     error: statsError,    isLoading: statsLoading }    =
+    useSWR<StatsResponse>(["stats", days], () => fetchStats(days), SWR_OPTIONS);
+  const { data: matinales, error: matinalesError, isLoading: matinalesLoading } =
+    useSWR<Matinale[]>(["matinales", days, selectedChannel], () => fetchMatinales(days, selectedChannel), SWR_OPTIONS);
+  const { data: timeline,  isLoading: timelineLoading } =
+    useSWR<Record<string, number | string>[]>(["timeline", days], () => fetchTimeline(days), SWR_OPTIONS);
+  const { data: schedule } =
+    useSWR<ScheduleEntry[]>(["schedule", days], () => fetchSchedule(days), SWR_OPTIONS);
+
+  const loading  = statsLoading || matinalesLoading || timelineLoading;
+  const error    = statsError || matinalesError;
+  const channels = stats?.channels.map((c) => c.name) ?? [];
+
+  return (
+    <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+
+      {/* ── Bandeau top rouge ── */}
+      <div style={{ background: "var(--accent)", height: 4 }} />
+
+      {/* ── Masthead ── */}
+      <header style={{ background: "var(--surface)", borderBottom: "2px solid var(--ink)" }}>
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-end justify-between">
+            <div>
+              <h1
+                className="font-display leading-none tracking-tight"
+                style={{ fontSize: 40, color: "var(--ink)", fontWeight: 900 }}
+              >
+                MEDIAPULSE
+              </h1>
+              <p className="text-xs font-semibold tracking-widest uppercase mt-1"
+                style={{ color: "var(--text-muted)", letterSpacing: "0.2em" }}>
+                Intelligence · Matinales TV Sénégal
+              </p>
+            </div>
+            <div className="text-right hidden md:block">
+              <p className="text-xs uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+                {today()}
+              </p>
+              {loading && (
+                <p className="text-xs mt-1" style={{ color: "var(--accent)" }}>
+                  ● Actualisation…
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Barre de filtres ── */}
+      <div style={{ background: "var(--surface)", borderBottom: "1px solid var(--border)" }}>
+        <div className="max-w-7xl mx-auto px-6 py-2 flex flex-wrap items-center gap-6">
+
+          {/* Période */}
+          <div className="flex items-center gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wider mr-2"
+              style={{ color: "var(--text-muted)" }}>Période</span>
+            {PERIODS.map((p) => (
+              <button key={p.value} onClick={() => setDays(p.value)}
+                className="px-3 py-1 text-xs font-semibold transition-all"
+                style={{
+                  background:   days === p.value ? "var(--accent)" : "transparent",
+                  color:        days === p.value ? "white"         : "var(--text-muted)",
+                  borderRadius: 2,
+                }}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Séparateur */}
+          {channels.length > 0 && (
+            <div style={{ width: 1, height: 20, background: "var(--border)" }} />
+          )}
+
+          {/* Chaînes */}
+          {channels.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <span className="text-xs font-semibold uppercase tracking-wider mr-2"
+                style={{ color: "var(--text-muted)" }}>Chaîne</span>
+              <button onClick={() => setSelectedChannel(undefined)}
+                className="px-3 py-1 text-xs font-semibold transition-all"
+                style={{
+                  background:   !selectedChannel ? "var(--ink)" : "transparent",
+                  color:        !selectedChannel ? "white"       : "var(--text-muted)",
+                  borderRadius: 2,
+                }}>
+                Toutes
+              </button>
+              {channels.map((ch) => (
+                <button key={ch}
+                  onClick={() => setSelectedChannel(ch === selectedChannel ? undefined : ch)}
+                  className="px-3 py-1 text-xs font-semibold transition-all"
+                  style={{
+                    background:   selectedChannel === ch ? "var(--ink)" : "transparent",
+                    color:        selectedChannel === ch ? "white"       : "var(--text-muted)",
+                    borderRadius: 2,
+                  }}>
+                  {ch}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+
+        {/* Erreur */}
+        {error && (
+          <div className="p-4 mb-6 text-sm font-medium"
+            style={{ background: "var(--accent-light)", borderLeft: "4px solid var(--accent)", color: "var(--accent)" }}>
+            ⚠ Impossible de contacter l&apos;API — vérifie que Railway est bien déployé.
+          </div>
+        )}
+
+        {/* KPIs */}
+        {statsLoading && !stats
+          ? <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{ height: 96 }} />)}
+            </div>
+          : stats && <KPICards stats={stats} />
+        }
+
+        {/* Charts */}
+        {statsLoading && !stats
+          ? <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <div className="skeleton" style={{ height: 300 }} />
+              <div className="skeleton" style={{ height: 300 }} />
+            </div>
+          : <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {stats    && <ViewsChart channels={stats.channels} />}
+              {timeline && timeline.length > 0 && <TimelineChart data={timeline} />}
+            </div>
+        }
+
+        {/* Guide horaires */}
+        {schedule && schedule.length > 0 && <ScheduleGuide data={schedule} />}
+
+        {/* Table */}
+        {matinalesLoading && !matinales
+          ? <div className="skeleton" style={{ height: 300 }} />
+          : matinales && matinales.length > 0 && <MatinalesTable matinales={matinales} />
+        }
+
+      </main>
+
+      {/* Footer */}
+      <footer className="max-w-7xl mx-auto px-6 py-6 mt-4"
+        style={{ borderTop: "1px solid var(--border)" }}>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          MediaPulse · Données YouTube · Sync automatique lun–ven 6h–12h (UTC)
+        </p>
+      </footer>
+
+    </div>
+  );
+}
