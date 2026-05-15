@@ -3,10 +3,8 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 
-const COLORS = [
-  "#6366f1","#ec4899","#f59e0b","#22c55e","#14b8a6",
-  "#3b82f6","#f97316","#a855f7","#ef4444","#8b5cf6",
-];
+const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
+                 "#a30016","#4a4440","#8b0000","#555","#e53e3e"];
 
 function fmt(n: number) {
   return n >= 1_000_000
@@ -17,9 +15,8 @@ function fmt(n: number) {
 }
 
 function fmtDate(d: string) {
-  // "2026-05-08" → "08/05"
-  const parts = d.split("-");
-  return `${parts[2]}/${parts[1]}`;
+  const [, m, day] = d.split("-");
+  return `${day}/${m}`;
 }
 
 export default function TimelineChart({
@@ -30,87 +27,54 @@ export default function TimelineChart({
   if (!data.length) return null;
 
   const channels = Object.keys(data[0]).filter((k) => k !== "date");
-  const hasViews = data.some((d) =>
-    channels.some((ch) => (d[ch] as number) > 0)
-  );
-
-  if (!hasViews) {
-    return (
-      <div
-        style={{ background: "var(--surface)", border: "1px solid var(--border)", minHeight: 320 }}
-        className="rounded-xl p-5 mb-6 flex flex-col items-center justify-center"
-      >
-        <p className="text-3xl mb-3">📊</p>
-        <p className="font-medium" style={{ color: "var(--text-muted)" }}>
-          Évolution des vues par jour
-        </p>
-        <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-          Les vues seront disponibles après la prochaine synchronisation.
-        </p>
-      </div>
-    );
-  }
-
-  // Réduire le nombre de ticks sur l'axe X pour éviter le chevauchement
+  const hasViews = data.some((d) => channels.some((ch) => (d[ch] as number) > 0));
   const tickInterval = Math.max(1, Math.floor(data.length / 8));
 
   return (
-    <div
-      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-      className="rounded-xl p-5 mb-6"
-    >
-      <h2
-        className="text-sm font-semibold uppercase tracking-wider mb-4"
-        style={{ color: "var(--text-muted)" }}
-      >
-        Évolution des vues par jour
-      </h2>
-      <ResponsiveContainer width="100%" height={280}>
-        <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-          <XAxis
-            dataKey="date"
-            tickFormatter={fmtDate}
-            interval={tickInterval}
-            tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tickFormatter={fmt}
-            tick={{ fill: "var(--text-muted)", fontSize: 10 }}
-            axisLine={false}
-            tickLine={false}
-            width={40}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              fontSize: 12,
-            }}
-            labelFormatter={fmtDate}
-            labelStyle={{ color: "var(--text)", fontWeight: 600, marginBottom: 4 }}
-            formatter={(v: number, name: string) => [fmt(v), name]}
-          />
-          <Legend
-            wrapperStyle={{ color: "var(--text-muted)", fontSize: 10, paddingTop: 8 }}
-            iconType="circle"
-            iconSize={6}
-          />
-          {channels.map((ch, i) => (
-            <Line
-              key={ch}
-              type="monotone"
-              dataKey={ch}
-              stroke={COLORS[i % COLORS.length]}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{ r: 4 }}
-            />
-          ))}
-        </LineChart>
-      </ResponsiveContainer>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
+      <div className="px-5 pt-4 pb-3" style={{ borderBottom: "2px solid var(--ink)" }}>
+        <p className="text-xs font-bold uppercase tracking-widest"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Évolution
+        </p>
+        <h2 className="font-display font-bold mt-0.5"
+          style={{ fontSize: 18, color: "var(--ink)" }}>
+          Vues par jour
+        </h2>
+      </div>
+
+      <div className="p-5">
+        {!hasViews ? (
+          <div className="flex items-center justify-center"
+            style={{ height: 240, color: "var(--text-muted)" }}>
+            <p className="text-sm">Données de vues disponibles après synchronisation.</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <XAxis dataKey="date" tickFormatter={fmtDate} interval={tickInterval}
+                tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+                axisLine={{ stroke: "var(--border)" }} tickLine={false} />
+              <YAxis tickFormatter={fmt}
+                tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+                axisLine={false} tickLine={false} width={40} />
+              <Tooltip
+                contentStyle={{ background: "var(--surface)", border: "1px solid var(--ink)", borderRadius: 0, fontSize: 12 }}
+                labelFormatter={fmtDate}
+                labelStyle={{ color: "var(--ink)", fontWeight: 700, marginBottom: 4 }}
+                formatter={(v: number, name: string) => [fmt(v), name]}
+              />
+              <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconType="plainline" iconSize={16} />
+              {channels.map((ch, i) => (
+                <Line key={ch} type="monotone" dataKey={ch}
+                  stroke={COLORS[i % COLORS.length]}
+                  strokeWidth={i === 0 ? 2.5 : 1.5}
+                  dot={false} activeDot={{ r: 3, strokeWidth: 0 }} />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </div>
   );
 }

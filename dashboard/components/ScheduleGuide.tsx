@@ -1,20 +1,18 @@
 "use client";
 import { ScheduleEntry } from "@/lib/api";
 
-// Plage affichée : 6h00 → 12h30 (en minutes depuis minuit)
-const RANGE_START = 6 * 60;   // 360
-const RANGE_END   = 12 * 60 + 30; // 750
-const RANGE       = RANGE_END - RANGE_START; // 390 min
+const RANGE_START = 6 * 60;
+const RANGE_END   = 12 * 60 + 30;
+const RANGE       = RANGE_END - RANGE_START;
 
-const COLORS = [
-  "#6366f1","#8b5cf6","#ec4899","#f59e0b","#22c55e",
-  "#14b8a6","#3b82f6","#f97316","#a855f7","#ef4444",
-];
+const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
+                 "#a30016","#4a4440","#8b0000","#555","#e53e3e"];
 
-// Ticks toutes les 30 min
 const TICKS = Array.from({ length: Math.floor(RANGE / 30) + 1 }, (_, i) => {
   const min = RANGE_START + i * 30;
-  return { min, label: `${String(min / 60 | 0).padStart(2, "0")}h${min % 60 === 0 ? "00" : "30"}` };
+  const h   = Math.floor(min / 60);
+  const m   = min % 60;
+  return { min, label: `${String(h).padStart(2,"0")}h${m === 0 ? "00" : "30"}` };
 });
 
 function pct(min: number) {
@@ -25,139 +23,106 @@ export default function ScheduleGuide({ data }: { data: ScheduleEntry[] }) {
   if (!data.length) return null;
 
   return (
-    <div
-      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-      className="rounded-xl p-5 mb-6"
-    >
-      {/* Titre */}
-      <div className="flex items-center justify-between mb-6">
-        <h2
-          className="text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Guide des horaires
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+      className="mb-6">
+
+      {/* Titre section */}
+      <div className="px-5 pt-4 pb-3" style={{ borderBottom: "2px solid var(--ink)" }}>
+        <p className="text-xs font-bold uppercase tracking-widest"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Grille de programmes
+        </p>
+        <h2 className="font-display font-bold mt-0.5" style={{ fontSize: 18, color: "var(--ink)" }}>
+          Horaires moyens de diffusion
         </h2>
-        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-          Moyennes sur la période sélectionnée
-        </span>
       </div>
 
-      {/* Grille */}
-      <div className="flex gap-4">
-        {/* Labels chaînes */}
-        <div className="flex flex-col gap-3 shrink-0" style={{ width: 120 }}>
-          <div style={{ height: 24 }} /> {/* espace header ticks */}
-          {data.map((entry) => (
-            <div
-              key={entry.channel}
-              className="flex items-center h-9 text-xs font-semibold truncate"
-              style={{ color: "var(--text)" }}
-            >
-              {entry.channel}
-            </div>
-          ))}
-        </div>
+      <div className="p-5 overflow-x-auto">
+        <div className="flex gap-4" style={{ minWidth: 600 }}>
 
-        {/* Zone graphique */}
-        <div className="flex-1 min-w-0">
-          {/* Ticks horaires */}
-          <div className="relative h-6 mb-0">
-            {TICKS.map((t) => (
-              <span
-                key={t.min}
-                className="absolute text-xs transform -translate-x-1/2"
-                style={{ left: `${pct(t.min)}%`, color: "var(--text-muted)", top: 0 }}
-              >
-                {t.label}
-              </span>
+          {/* Labels chaînes */}
+          <div className="flex flex-col shrink-0" style={{ width: 116 }}>
+            <div style={{ height: 28 }} />
+            {data.map((entry) => (
+              <div key={entry.channel}
+                className="flex items-center h-10 mb-2 text-xs font-bold uppercase"
+                style={{ color: "var(--ink)", letterSpacing: "0.05em" }}>
+                {entry.channel}
+              </div>
             ))}
           </div>
 
-          {/* Lignes de grille + barres */}
-          <div className="relative">
-            {/* Lignes verticales de grille */}
-            {TICKS.map((t) => (
-              <div
-                key={t.min}
-                className="absolute top-0 bottom-0"
-                style={{
-                  left: `${pct(t.min)}%`,
-                  width: 1,
-                  background: "var(--border)",
-                }}
-              />
-            ))}
+          {/* Zone Gantt */}
+          <div className="flex-1 min-w-0">
+            {/* Ticks */}
+            <div className="relative mb-1" style={{ height: 28 }}>
+              {TICKS.map((t) => (
+                <span key={t.min}
+                  className="absolute text-xs font-mono font-semibold transform -translate-x-1/2"
+                  style={{ left: `${pct(t.min)}%`, top: 6, color: "var(--text-muted)", fontSize: 10 }}>
+                  {t.label}
+                </span>
+              ))}
+            </div>
 
-            {/* Barre par chaîne */}
-            {data.map((entry, i) => {
-              const startPct = pct(entry.avg_start_min);
-              const endPct   = pct(entry.avg_end_min);
-              const widthPct = Math.max(1, endPct - startPct);
-              const color    = COLORS[i % COLORS.length];
+            {/* Grille + barres */}
+            <div className="relative">
+              {/* Lignes verticales */}
+              {TICKS.map((t) => (
+                <div key={t.min} className="absolute top-0 bottom-0"
+                  style={{ left: `${pct(t.min)}%`, width: 1, background: "var(--border)" }} />
+              ))}
 
-              return (
-                <div key={entry.channel} className="relative flex items-center h-9 mb-3">
-                  {/* Barre principale */}
-                  <div
-                    className="absolute h-7 rounded-md flex items-center px-2 overflow-hidden group cursor-default"
-                    style={{
-                      left: `${startPct}%`,
-                      width: `${widthPct}%`,
-                      background: `${color}33`,
-                      border: `1.5px solid ${color}`,
-                    }}
-                  >
-                    <span
-                      className="text-xs font-medium whitespace-nowrap overflow-hidden"
-                      style={{ color }}
-                    >
-                      {entry.avg_start} → {entry.avg_end}
-                    </span>
+              {/* Barre chaîne */}
+              {data.map((entry, i) => {
+                const color    = COLORS[i % COLORS.length];
+                const startPct = pct(entry.avg_start_min);
+                const widthPct = Math.max(1, pct(entry.avg_end_min) - startPct);
 
-                    {/* Tooltip au hover */}
-                    <div
-                      className="absolute left-0 top-full mt-1 z-20 rounded-lg p-3 text-xs hidden group-hover:block"
-                      style={{
-                        background: "var(--surface2)",
-                        border: "1px solid var(--border)",
-                        minWidth: 180,
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
-                      }}
-                    >
-                      <p className="font-semibold mb-1" style={{ color: "var(--text)" }}>
-                        {entry.channel}
-                      </p>
-                      <p style={{ color: "var(--text-muted)" }}>
-                        Début moy. : <strong style={{ color: "var(--text)" }}>{entry.avg_start}</strong>
-                      </p>
-                      <p style={{ color: "var(--text-muted)" }}>
-                        Fin moy. : <strong style={{ color: "var(--text)" }}>{entry.avg_end}</strong>
-                      </p>
-                      <p style={{ color: "var(--text-muted)" }}>
-                        Durée moy. : <strong style={{ color: "var(--text)" }}>{entry.avg_duration ?? "—"}</strong>
-                      </p>
-                      <p style={{ color: "var(--text-muted)" }}>
-                        Ponctualité : <strong style={{ color: "var(--text)" }}>±{entry.punctuality_min} min</strong>
-                      </p>
-                      <p style={{ color: "var(--text-muted)" }}>
-                        Épisodes : <strong style={{ color: "var(--text)" }}>{entry.episode_count}</strong>
-                      </p>
+                return (
+                  <div key={entry.channel} className="relative h-10 mb-2">
+                    <div className="absolute h-8 top-1 group cursor-default"
+                      style={{ left: `${startPct}%`, width: `${widthPct}%`,
+                               background: color, opacity: 0.9 }}>
+                      {/* Label dans la barre */}
+                      <span className="absolute inset-0 flex items-center px-2 text-xs font-bold text-white truncate"
+                        style={{ fontSize: 11 }}>
+                        {entry.avg_start} — {entry.avg_end}
+                      </span>
+
+                      {/* Tooltip */}
+                      <div className="absolute left-0 top-full mt-1 z-30 p-3 hidden group-hover:block"
+                        style={{ background: "var(--ink)", color: "white",
+                                 minWidth: 190, boxShadow: "4px 4px 0 rgba(0,0,0,0.3)" }}>
+                        <p className="font-bold text-sm mb-2 pb-1"
+                          style={{ borderBottom: "1px solid rgba(255,255,255,0.2)" }}>
+                          {entry.channel}
+                        </p>
+                        <div className="space-y-1" style={{ fontSize: 11 }}>
+                          <p><span style={{ opacity: 0.6 }}>Début moy. </span>
+                             <strong>{entry.avg_start}</strong></p>
+                          <p><span style={{ opacity: 0.6 }}>Fin moy. </span>
+                             <strong>{entry.avg_end}</strong></p>
+                          <p><span style={{ opacity: 0.6 }}>Durée moy. </span>
+                             <strong>{entry.avg_duration ?? "—"}</strong></p>
+                          <p><span style={{ opacity: 0.6 }}>Ponctualité </span>
+                             <strong>±{entry.punctuality_min} min</strong></p>
+                          <p><span style={{ opacity: 0.6 }}>Épisodes analysés </span>
+                             <strong>{entry.episode_count}</strong></p>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Légende */}
-      <div
-        className="flex gap-6 mt-4 pt-4 text-xs flex-wrap"
-        style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)" }}
-      >
-        <span>📌 Passe la souris sur une barre pour les détails</span>
-        <span>⏱ ±X min = écart-type de l&apos;heure de début (régularité)</span>
+        {/* Légende bas */}
+        <p className="text-xs mt-4 pt-3" style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)" }}>
+          Survoler une barre pour le détail · ±X min = écart-type de l&apos;heure de début (régularité)
+        </p>
       </div>
     </div>
   );

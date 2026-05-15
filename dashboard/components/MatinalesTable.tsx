@@ -14,15 +14,15 @@ function fmt(n: number | null) {
 }
 
 const HEADERS: { key: SortKey | null; label: string }[] = [
-  { key: "published_at", label: "Date" },
-  { key: null, label: "Chaîne" },
-  { key: null, label: "Émission" },
-  { key: null, label: "Début" },
-  { key: null, label: "Fin" },
-  { key: "duration_seconds", label: "Durée" },
-  { key: "view_count", label: "Vues" },
-  { key: "like_count", label: "Likes" },
-  { key: null, label: "" },
+  { key: "published_at",    label: "Date"     },
+  { key: null,              label: "Chaîne"   },
+  { key: null,              label: "Émission" },
+  { key: null,              label: "Début"    },
+  { key: null,              label: "Fin"      },
+  { key: "duration_seconds",label: "Durée"    },
+  { key: "view_count",      label: "Vues"     },
+  { key: "like_count",      label: "Likes"    },
+  { key: null,              label: ""         },
 ];
 
 export default function MatinalesTable({ matinales }: { matinales: Matinale[] }) {
@@ -30,67 +30,61 @@ export default function MatinalesTable({ matinales }: { matinales: Matinale[] })
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("desc"); }
   }
 
   const sorted = [...matinales].sort((a, b) => {
-    let va: number, vb: number;
-    if (sortKey === "published_at") {
-      va = new Date(a.published_at).getTime();
-      vb = new Date(b.published_at).getTime();
-    } else {
-      va = (a[sortKey] as number | null) ?? 0;
-      vb = (b[sortKey] as number | null) ?? 0;
-    }
-    return sortDir === "asc" ? va - vb : vb - va;
+    const va = sortKey === "published_at"
+      ? new Date(a.published_at).getTime()
+      : ((a[sortKey] as number | null) ?? 0);
+    const vb = sortKey === "published_at"
+      ? new Date(b.published_at).getTime()
+      : ((b[sortKey] as number | null) ?? 0);
+    return sortDir === "asc" ? (va as number) - (vb as number) : (vb as number) - (va as number);
   });
 
   return (
-    <div
-      style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
-      className="rounded-xl overflow-hidden"
-    >
-      {/* Header */}
-      <div
-        className="px-5 py-4 flex items-center justify-between border-b"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <h2
-          className="text-sm font-semibold uppercase tracking-wider"
-          style={{ color: "var(--text-muted)" }}
-        >
-          Détail des matinales
-        </h2>
-        <span
-          className="text-xs px-2 py-0.5 rounded-full font-medium"
-          style={{ background: "var(--surface2)", color: "var(--text-muted)" }}
-        >
-          {matinales.length} épisode{matinales.length > 1 ? "s" : ""}
+    <div style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
+      {/* En-tête section */}
+      <div className="px-5 py-4 flex items-center justify-between"
+        style={{ borderBottom: "2px solid var(--ink)" }}>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+            Résultats
+          </p>
+          <h2 className="font-display font-bold mt-0.5"
+            style={{ fontSize: 18, color: "var(--ink)" }}>
+            Détail des matinales
+          </h2>
+        </div>
+        <span className="text-sm font-bold px-3 py-1"
+          style={{ background: "var(--ink)", color: "white" }}>
+          {matinales.length}
         </span>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: "var(--surface2)", color: "var(--text-muted)" }}>
+            <tr style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)" }}>
               {HEADERS.map(({ key, label }) => (
-                <th
-                  key={label}
-                  className="px-4 py-3 text-left font-medium text-xs uppercase tracking-wider select-none"
-                  style={{ cursor: key ? "pointer" : "default" }}
+                <th key={label}
                   onClick={() => key && toggleSort(key)}
-                >
+                  className="px-4 py-2.5 text-left text-xs font-bold uppercase"
+                  style={{
+                    color:           "var(--text-muted)",
+                    letterSpacing:   "0.1em",
+                    cursor:          key ? "pointer" : "default",
+                    userSelect:      "none",
+                    whiteSpace:      "nowrap",
+                  }}>
                   {label}
-                  {key && sortKey === key && (
-                    <span className="ml-1">{sortDir === "desc" ? "↓" : "↑"}</span>
-                  )}
-                  {key && sortKey !== key && (
-                    <span className="ml-1 opacity-30">↕</span>
+                  {key && (
+                    <span className="ml-1" style={{ opacity: sortKey === key ? 1 : 0.3 }}>
+                      {sortKey === key ? (sortDir === "desc" ? "↓" : "↑") : "↕"}
+                    </span>
                   )}
                 </th>
               ))}
@@ -98,67 +92,50 @@ export default function MatinalesTable({ matinales }: { matinales: Matinale[] })
           </thead>
           <tbody>
             {sorted.map((m, i) => (
-              <tr
-                key={m.id}
+              <tr key={m.id}
                 style={{
-                  borderTop: "1px solid var(--border)",
-                  background: i % 2 === 0 ? "transparent" : "var(--surface2)",
+                  borderBottom:  "1px solid var(--border)",
+                  background:    i % 2 === 0 ? "var(--surface)" : "var(--surface2)",
                 }}
-                className="hover:opacity-80 transition-opacity"
-              >
-                <td
-                  className="px-4 py-3 whitespace-nowrap text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {new Date(m.published_at).toLocaleDateString("fr-FR", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                  })}
+                className="hover:opacity-75 transition-opacity">
+                <td className="px-4 py-3 whitespace-nowrap text-xs font-mono"
+                  style={{ color: "var(--text-muted)" }}>
+                  {new Date(m.published_at).toLocaleDateString("fr-FR")}
                 </td>
-                <td className="px-4 py-3 font-semibold whitespace-nowrap">
-                  {m.channel}
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span className="text-xs font-bold px-2 py-0.5"
+                    style={{ background: "var(--ink)", color: "white" }}>
+                    {m.channel}
+                  </span>
                 </td>
-                <td
-                  className="px-4 py-3 max-w-xs truncate"
-                  style={{ color: "var(--text-muted)" }}
-                  title={m.title ?? ""}
-                >
+                <td className="px-4 py-3 max-w-xs truncate text-xs"
+                  style={{ color: "var(--text-muted)" }} title={m.title ?? ""}>
                   {m.title ?? "—"}
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">
+                <td className="px-4 py-3 whitespace-nowrap font-mono text-xs font-semibold">
                   {m.debut ?? "—"}
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap font-mono text-xs">
+                <td className="px-4 py-3 whitespace-nowrap font-mono text-xs"
+                  style={{ color: "var(--text-muted)" }}>
                   {m.fin ?? "—"}
                 </td>
-                <td
-                  className="px-4 py-3 whitespace-nowrap text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                >
+                <td className="px-4 py-3 whitespace-nowrap text-xs"
+                  style={{ color: "var(--text-muted)" }}>
                   {m.duree ?? "—"}
                 </td>
-                <td
-                  className="px-4 py-3 font-semibold"
-                  style={{ color: m.view_count ? "var(--accent)" : "var(--text-muted)" }}
-                >
+                <td className="px-4 py-3 whitespace-nowrap font-bold text-sm"
+                  style={{ color: m.view_count ? "var(--accent)" : "var(--text-muted)" }}>
                   {fmt(m.view_count)}
                 </td>
-                <td
-                  className="px-4 py-3 text-xs"
-                  style={{ color: "var(--text-muted)" }}
-                >
+                <td className="px-4 py-3 whitespace-nowrap text-xs"
+                  style={{ color: "var(--text-muted)" }}>
                   {fmt(m.like_count)}
                 </td>
                 <td className="px-4 py-3">
-                  <a
-                    href={m.youtube_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-md transition-colors hover:opacity-80"
-                    style={{ background: "#1e1128", color: "#c084fc" }}
-                  >
-                    ▶ YouTube
+                  <a href={m.youtube_url} target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-bold uppercase tracking-wider transition-opacity hover:opacity-70"
+                    style={{ color: "var(--accent)", textDecoration: "none", letterSpacing: "0.05em" }}>
+                    ▶ voir
                   </a>
                 </td>
               </tr>
