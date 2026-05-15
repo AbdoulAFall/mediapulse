@@ -74,15 +74,26 @@ def upsert_channel(name: str, handle: str | None, channel_id: str, playlist_id: 
 
 
 def insert_matinale(channel_db_id: int, video: dict) -> int | None:
-    """Retourne l'id inséré, ou None si déjà existant."""
+    """Retourne l'id inséré, ou None si déjà existant (même vidéo ou même chaîne/jour)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # 1. Doublon exact (même video_id)
             cur.execute(
                 "SELECT id FROM matinales WHERE youtube_video_id = %s",
                 (video["youtube_video_id"],)
             )
             if cur.fetchone():
                 return None
+
+            # 2. Une matinale existe déjà pour cette chaîne ce jour-là
+            cur.execute("""
+                SELECT id FROM matinales
+                WHERE channel_id = %s
+                  AND DATE(published_at AT TIME ZONE 'UTC') = DATE(%s::timestamptz AT TIME ZONE 'UTC')
+            """, (channel_db_id, video["published_at"]))
+            if cur.fetchone():
+                return None
+
             cur.execute("""
                 INSERT INTO matinales (channel_id, youtube_video_id, title, duration_seconds, published_at)
                 VALUES (%s, %s, %s, %s, %s)
