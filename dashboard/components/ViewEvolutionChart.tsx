@@ -198,6 +198,11 @@ export default function ViewEvolutionChart({ evolutions, date }: Props) {
                 ● LIVE
               </span>
             )}
+            <a href="/evolution"
+              className="text-xs font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
+              style={{ color: "var(--text-muted)", letterSpacing: "0.12em", textDecoration: "none" }}>
+              Détail →
+            </a>
           </div>
         </div>
         <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
