@@ -62,10 +62,19 @@ export default function MatinalesTable({ matinales }: { matinales: Matinale[] })
               Détail des matinales
             </h2>
           </div>
-          <span className="text-sm font-bold px-3 py-1"
-            style={{ background: "var(--ink)", color: "white" }}>
-            {matinales.length}
-          </span>
+          <div className="flex items-center gap-4">
+            <a
+              href="/matinales"
+              className="text-xs font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
+              style={{ color: "var(--text-muted)", letterSpacing: "0.12em", textDecoration: "none" }}
+            >
+              Toutes les matinales →
+            </a>
+            <span className="text-sm font-bold px-3 py-1"
+              style={{ background: "var(--ink)", color: "white" }}>
+              {matinales.length}
+            </span>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -157,17 +166,6 @@ export default function MatinalesTable({ matinales }: { matinales: Matinale[] })
             </tbody>
           </table>
         </div>
-      </div>
-
-      {/* Lien vers la page complète */}
-      <div className="mt-3 text-right">
-        <a
-          href="/matinales"
-          className="text-xs font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
-          style={{ color: "var(--text-muted)", letterSpacing: "0.12em", textDecoration: "none" }}
-        >
-          Toutes les matinales →
-        </a>
       </div>
 
       {/* Modal signalement */}
