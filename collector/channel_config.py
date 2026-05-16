@@ -46,7 +46,13 @@ CHANNELS = [
         "active": True,
         "matinale_start": "07:00",
         "matinale_end":   "10:30",
-        "title_hints": ["réveil", "reveil", "r'eveil"],
+        "title_hints": [
+            "votre matinale",   # "Votre matinale le R'Eveil" — hint le plus fiable
+            "r’eveil",     # apostrophe typographique ' (U+2019)
+            "r'eveil",          # apostrophe droite
+            "réveil",
+            "reveil",
+        ],
     },
     {
         "name": "Solo Media Group",
