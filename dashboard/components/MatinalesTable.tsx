@@ -159,6 +159,17 @@ export default function MatinalesTable({ matinales }: { matinales: Matinale[] })
         </div>
       </div>
 
+      {/* Lien vers la page complète */}
+      <div className="mt-3 text-right">
+        <a
+          href="/matinales"
+          className="text-xs font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.12em", textDecoration: "none" }}
+        >
+          Toutes les matinales →
+        </a>
+      </div>
+
       {/* Modal signalement */}
       {reporting && (
         <ReportModal matinale={reporting} onClose={() => setReporting(null)} />

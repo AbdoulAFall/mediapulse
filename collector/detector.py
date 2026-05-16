@@ -75,7 +75,10 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
     sur les 60 derniers jours, groupe par jour, sélectionne le meilleur
     candidat et l'insère en base.
     """
-    since = datetime.now(timezone.utc) - timedelta(days=days)
+    # On tronque à minuit pour éviter de couper le dernier jour en plein milieu
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
     total_new = 0
 
     for ch in channels:

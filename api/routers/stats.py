@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Query, HTTPException
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
+from math import ceil
 from database import query
 from models import StatsResponse, ChannelStats, Matinale, TimelinePoint
 
@@ -127,6 +128,120 @@ def get_matinales(
             youtube_url=f"https://www.youtube.com/watch?v={r['youtube_video_id']}",
         ))
     return result
+
+
+@router.get("/matinales/search")
+def search_matinales(
+    search:       str | None = Query(None),
+    channels:     str | None = Query(None),   # noms séparés par virgule
+    date_from:    str | None = Query(None),   # YYYY-MM-DD
+    date_to:      str | None = Query(None),   # YYYY-MM-DD
+    min_duration: int | None = Query(None),   # secondes
+    max_duration: int | None = Query(None),
+    min_views:    int | None = Query(None),
+    page:         int        = Query(1, ge=1),
+    page_size:    int        = Query(50, ge=1, le=200),
+):
+    """Recherche paginée avec filtres avancés."""
+    filters: list[str] = ["c.active = 1"]
+    params:  list      = []
+
+    if search:
+        filters.append("LOWER(m.title) LIKE LOWER(%s)")
+        params.append(f"%{search}%")
+
+    if channels:
+        ch_list = [c.strip() for c in channels.split(",") if c.strip()]
+        if ch_list:
+            placeholders = ",".join(["%s"] * len(ch_list))
+            filters.append(f"c.name IN ({placeholders})")
+            params.extend(ch_list)
+
+    if date_from:
+        filters.append("DATE(m.published_at AT TIME ZONE 'UTC') >= %s::date")
+        params.append(date_from)
+
+    if date_to:
+        filters.append("DATE(m.published_at AT TIME ZONE 'UTC') <= %s::date")
+        params.append(date_to)
+
+    if min_duration:
+        filters.append("m.duration_seconds >= %s")
+        params.append(min_duration)
+
+    if max_duration:
+        filters.append("m.duration_seconds <= %s")
+        params.append(max_duration)
+
+    where = " AND ".join(filters)
+
+    # Requête de base avec le dernier snapshot
+    base_sql = f"""
+        FROM matinales m
+        JOIN channels c ON c.id = m.channel_id
+        LEFT JOIN LATERAL (
+            SELECT view_count, like_count
+            FROM view_snapshots
+            WHERE matinale_id = m.id
+            ORDER BY snapshot_at DESC LIMIT 1
+        ) vs ON true
+        WHERE {where}
+        {"AND vs.view_count >= %s" if min_views else ""}
+    """
+    view_params = params + ([min_views] if min_views else [])
+
+    # Total
+    count_rows = query(f"SELECT COUNT(*) AS n {base_sql}", tuple(view_params))
+    total = int(count_rows[0]["n"] or 0)
+
+    # Agrégats (vues totales sur la sélection)
+    agg_rows = query(
+        f"SELECT COALESCE(SUM(vs.view_count),0) AS total_views {base_sql}",
+        tuple(view_params),
+    )
+    total_views = int(agg_rows[0]["total_views"] or 0)
+
+    # Données paginées
+    offset = (page - 1) * page_size
+    rows = query(f"""
+        SELECT
+            m.id, c.name AS channel, m.title, m.published_at,
+            m.duration_seconds, m.youtube_video_id,
+            vs.view_count, vs.like_count
+        {base_sql}
+        ORDER BY m.published_at DESC
+        LIMIT %s OFFSET %s
+    """, (*view_params, page_size, offset))
+
+    items = []
+    for r in rows:
+        pub = r["published_at"]
+        if pub.tzinfo is None:
+            pub = pub.replace(tzinfo=timezone.utc)
+        dur = r["duration_seconds"]
+        fin_dt = pub + timedelta(seconds=dur) if dur else None
+        items.append({
+            "id":               r["id"],
+            "channel":          r["channel"],
+            "title":            r["title"],
+            "published_at":     pub.isoformat(),
+            "duration_seconds": dur,
+            "debut":            _fmt_time(pub),
+            "fin":              _fmt_time(fin_dt) if fin_dt else None,
+            "duree":            _fmt_duration(dur),
+            "view_count":       r["view_count"],
+            "like_count":       r["like_count"],
+            "youtube_url":      f"https://www.youtube.com/watch?v={r['youtube_video_id']}",
+        })
+
+    return {
+        "items":       items,
+        "total":       total,
+        "total_views": total_views,
+        "page":        page,
+        "page_size":   page_size,
+        "pages":       ceil(total / page_size) if total else 1,
+    }
 
 
 @router.get("/schedule")
