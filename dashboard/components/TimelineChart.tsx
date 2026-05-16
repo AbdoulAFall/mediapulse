@@ -32,15 +32,23 @@ export default function TimelineChart({
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
-      <div className="px-5 pt-4 pb-3" style={{ borderBottom: "2px solid var(--ink)" }}>
-        <p className="text-xs font-bold uppercase tracking-widest"
-          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
-          Évolution
-        </p>
-        <h2 className="font-display font-bold mt-0.5"
-          style={{ fontSize: 18, color: "var(--ink)" }}>
-          Vues par jour
-        </h2>
+      <div className="px-5 pt-4 pb-3 flex items-start justify-between"
+        style={{ borderBottom: "2px solid var(--ink)" }}>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+            Évolution
+          </p>
+          <h2 className="font-display font-bold mt-0.5"
+            style={{ fontSize: 18, color: "var(--ink)" }}>
+            Vues par jour
+          </h2>
+        </div>
+        <a href="/timeline"
+          className="text-xs font-bold uppercase tracking-widest hover:opacity-70 transition-opacity mt-1"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.12em", textDecoration: "none", flexShrink: 0 }}>
+          Détail →
+        </a>
       </div>
 
       <div className="p-5">
