@@ -71,3 +71,27 @@ export async function fetchSchedule(days: number): Promise<ScheduleEntry[]> {
   if (!res.ok) throw new Error("Erreur API schedule");
   return res.json();
 }
+
+export interface ViewSnapshot {
+  time: string;          // "HH:MM"
+  snapshot_at: string;   // ISO 8601
+  view_count: number | null;
+  like_count: number | null;
+  comment_count: number | null;
+}
+
+export interface MatinaleEvolution {
+  matinale_id: number;
+  channel: string;
+  title: string | null;
+  youtube_video_id: string;
+  published_at: string;
+  snapshots: ViewSnapshot[];
+}
+
+export async function fetchViewsEvolution(date?: string): Promise<MatinaleEvolution[]> {
+  const params = date ? `?date=${date}` : "";
+  const res = await fetch(`${API_URL}/api/views/evolution${params}`);
+  if (!res.ok) throw new Error("Erreur API views/evolution");
+  return res.json();
+}

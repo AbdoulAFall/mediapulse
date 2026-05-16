@@ -165,6 +165,7 @@ def get_recent_matinale_titles(channel_db_id: int, limit: int = 30) -> list[str]
 
 
 def get_matinale_ids_last_n_days(days: int = 60) -> list:
+    """Matinales des N derniers jours sans snapshot récent (seuil 6h)."""
     since = datetime.now(timezone.utc) - timedelta(days=days)
     six_hours_ago = datetime.now(timezone.utc) - timedelta(hours=6)
     with get_conn() as conn:
@@ -182,4 +183,25 @@ def get_matinale_ids_last_n_days(days: int = 60) -> list:
                       ) < %s
                   )
             """, (since, six_hours_ago))
+            return cur.fetchall()
+
+
+def get_todays_matinale_ids() -> list:
+    """Matinales d'aujourd'hui sans snapshot depuis moins de 15 min — pour refresh fréquent."""
+    fifteen_min_ago = datetime.now(timezone.utc) - timedelta(minutes=15)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT m.id, m.youtube_video_id
+                FROM matinales m
+                WHERE DATE(m.published_at AT TIME ZONE 'UTC') = CURRENT_DATE
+                  AND (
+                      NOT EXISTS (SELECT 1 FROM view_snapshots vs WHERE vs.matinale_id = m.id)
+                      OR (
+                          SELECT snapshot_at FROM view_snapshots
+                          WHERE matinale_id = m.id
+                          ORDER BY snapshot_at DESC LIMIT 1
+                      ) < %s
+                  )
+            """, (fifteen_min_ago,))
             return cur.fetchall()

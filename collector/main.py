@@ -2,13 +2,14 @@
 MediaPulse — Collecteur de matinales TV sénégalaises
 
 Commandes :
-  python main.py sync          — Sync 60 derniers jours (détection + vues)
-  python main.py sync 730      — Sync 2 ans en arrière
-  python main.py detect        — Détecte uniquement les nouvelles matinales (60j)
-  python main.py detect 730    — Détecte sur 2 ans
-  python main.py refresh       — Met à jour les vues uniquement
-  python main.py stats         — Rapport des 60 derniers jours
-  python main.py stats 730     — Rapport sur 2 ans
+  python main.py sync             — Sync 60 derniers jours (détection + vues)
+  python main.py sync 730         — Sync 2 ans en arrière
+  python main.py detect           — Détecte uniquement les nouvelles matinales (60j)
+  python main.py detect 730       — Détecte sur 2 ans
+  python main.py refresh          — Met à jour les vues uniquement (seuil 6h)
+  python main.py refresh_today    — Snapshot vues des matinales d'aujourd'hui (seuil 15 min)
+  python main.py stats            — Rapport des 60 derniers jours
+  python main.py stats 730        — Rapport sur 2 ans
 """
 import sys
 import os
@@ -82,6 +83,14 @@ def cmd_refresh(days: int = DEFAULT_DAYS):
     print()
 
 
+def cmd_refresh_today(_days: int = DEFAULT_DAYS):
+    """Snapshot toutes les 15 min pour les matinales d'aujourd'hui."""
+    storage.init_db()
+    print("\nRefresh vues J0 (seuil 15 min)...")
+    detector.refresh_today_views()
+    print()
+
+
 def cmd_stats(days: int = DEFAULT_DAYS):
     storage.init_db()
     report.print_stats(days)
@@ -91,6 +100,7 @@ COMMANDS = {
     "sync": cmd_sync,
     "detect": cmd_detect,
     "refresh": cmd_refresh,
+    "refresh_today": cmd_refresh_today,
     "stats": cmd_stats,
 }
 

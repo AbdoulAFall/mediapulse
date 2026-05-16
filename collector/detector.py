@@ -166,3 +166,23 @@ def refresh_view_counts(days: int = DEFAULT_LOOKBACK_DAYS):
         print(f"     {len(stats)} snapshot(s) enregistré(s)")
     except Exception as e:
         print(f"     ERREUR : {e}")
+
+
+def refresh_today_views():
+    """Snapshot des vues pour les matinales d'aujourd'hui (refresh toutes les 15 min)."""
+    rows = storage.get_todays_matinale_ids()
+    if not rows:
+        print("  Aucune matinale aujourd'hui à actualiser.")
+        return
+
+    video_ids = [r["youtube_video_id"] for r in rows]
+    id_map = {r["youtube_video_id"]: r["id"] for r in rows}
+
+    print(f"  → Refresh vues J0 pour {len(video_ids)} vidéo(s)...")
+    try:
+        stats = yt.fetch_video_stats(video_ids)
+        for vid_id, s in stats.items():
+            storage.insert_snapshot(id_map[vid_id], s)
+        print(f"     {len(stats)} snapshot(s) enregistré(s)")
+    except Exception as e:
+        print(f"     ERREUR : {e}")

@@ -2,14 +2,15 @@
 import { useState } from "react";
 import useSWR from "swr";
 import {
-  fetchStats, fetchMatinales, fetchTimeline, fetchSchedule,
-  StatsResponse, Matinale, ScheduleEntry,
+  fetchStats, fetchMatinales, fetchTimeline, fetchSchedule, fetchViewsEvolution,
+  StatsResponse, Matinale, ScheduleEntry, MatinaleEvolution,
 } from "@/lib/api";
-import KPICards      from "@/components/KPICards";
-import ViewsChart    from "@/components/ViewsChart";
-import TimelineChart from "@/components/TimelineChart";
-import MatinalesTable from "@/components/MatinalesTable";
-import ScheduleGuide from "@/components/ScheduleGuide";
+import KPICards           from "@/components/KPICards";
+import ViewsChart         from "@/components/ViewsChart";
+import TimelineChart      from "@/components/TimelineChart";
+import MatinalesTable     from "@/components/MatinalesTable";
+import ScheduleGuide      from "@/components/ScheduleGuide";
+import ViewEvolutionChart from "@/components/ViewEvolutionChart";
 
 const PERIODS = [
   { label: "7 j",   value: 7   },
@@ -44,6 +45,16 @@ export default function Dashboard() {
     useSWR<Record<string, number | string>[]>(["timeline", days], () => fetchTimeline(days), SWR_OPTIONS);
   const { data: schedule } =
     useSWR<ScheduleEntry[]>(["schedule", days], () => fetchSchedule(days), SWR_OPTIONS);
+
+  // Evolution J0 — refresh toutes les 2 min (données live)
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const { data: evolution } =
+    useSWR<MatinaleEvolution[]>(["evolution", todayDate], () => fetchViewsEvolution(todayDate), {
+      dedupingInterval: 2 * 60 * 1000,   // 2 min
+      revalidateOnFocus: true,
+      errorRetryCount: 2,
+      refreshInterval: 2 * 60 * 1000,    // revalide toutes les 2 min
+    });
 
   const loading  = statsLoading || matinalesLoading || timelineLoading;
   const error    = statsError || matinalesError;
@@ -174,6 +185,14 @@ export default function Dashboard() {
 
         {/* Guide horaires */}
         {schedule && schedule.length > 0 && <ScheduleGuide data={schedule} />}
+
+        {/* Évolution vues J0 */}
+        <div className="mb-6">
+          <ViewEvolutionChart
+            evolutions={evolution ?? []}
+            date={todayDate}
+          />
+        </div>
 
         {/* Table */}
         {matinalesLoading && !matinales

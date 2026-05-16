@@ -2,14 +2,19 @@ name: MediaPulse — Sync matinales
 
 on:
   schedule:
-    - cron: '0,30 6-11 * * 1-5'  # Toutes les 30 min, 6h-11h30, lun-ven (matinales)
-    - cron: '0 13 * * *'          # 13h00 UTC tous les jours (refresh vues après-midi)
-    - cron: '0 18 * * *'          # 18h00 UTC tous les jours (refresh vues soirée)
+    - cron: '0,30 6-11 * * 1-5'   # Toutes les 30 min, 6h–11h30, lun–ven (détection + vues 6h)
+    - cron: '*/15 6-12 * * 1-5'   # Toutes les 15 min, 6h–12h, lun–ven (snapshot vues J0)
+    - cron: '0 13 * * *'           # 13h00 UTC tous les jours (refresh vues après-midi)
+    - cron: '0 18 * * *'           # 18h00 UTC tous les jours (refresh vues soirée)
   workflow_dispatch:
     inputs:
       days:
         description: 'Nombre de jours à synchroniser (1–730)'
         default: '60'
+        required: false
+      command:
+        description: 'Commande à exécuter (sync | detect | refresh | refresh_today)'
+        default: 'sync'
         required: false
 
 jobs:
@@ -32,9 +37,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r collector/requirements.txt
 
-      - name: Sync matinales (60 derniers jours)
+      # ── Snapshot vues J0 toutes les 15 min (6h–12h lun–ven) ───────────────
+      - name: Refresh vues J0 (15 min)
+        if: github.event_name == 'schedule' && contains(github.event.schedule, '*/15')
         working-directory: collector
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python main.py sync ${{ github.event.inputs.days || '60' }}
+        run: python main.py refresh_today
+
+      # ── Sync standard (détection + refresh 6h) : toutes les 30 min ────────
+      - name: Sync matinales (60 derniers jours)
+        if: github.event_name != 'schedule' || !contains(github.event.schedule, '*/15')
+        working-directory: collector
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python main.py ${{ github.event.inputs.command || 'sync' }} ${{ github.event.inputs.days || '60' }}

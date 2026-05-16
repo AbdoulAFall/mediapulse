@@ -180,6 +180,69 @@ def get_schedule(days: int = Query(60, ge=1, le=730)):
     return result
 
 
+@router.get("/views/evolution")
+def get_views_evolution(date: str | None = Query(None)):
+    """
+    Retourne l'évolution des vues toutes les 15 min pour chaque matinale d'une journée.
+    date : format YYYY-MM-DD (défaut = aujourd'hui UTC)
+    """
+    if date is None:
+        date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    try:
+        # Validation format
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Format de date invalide. Utiliser YYYY-MM-DD.")
+
+    rows = query("""
+        SELECT
+            m.id            AS matinale_id,
+            c.name          AS channel,
+            m.title,
+            m.youtube_video_id,
+            m.published_at,
+            vs.snapshot_at,
+            vs.view_count,
+            vs.like_count,
+            vs.comment_count
+        FROM matinales m
+        JOIN channels c ON c.id = m.channel_id
+        JOIN view_snapshots vs ON vs.matinale_id = m.id
+        WHERE DATE(m.published_at AT TIME ZONE 'UTC') = %s::date
+        ORDER BY m.id, vs.snapshot_at ASC
+    """, (date,))
+
+    # Groupe par matinale
+    by_matinale: dict[int, dict] = {}
+    for r in rows:
+        mid = r["matinale_id"]
+        if mid not in by_matinale:
+            pub = r["published_at"]
+            if pub.tzinfo is None:
+                pub = pub.replace(tzinfo=timezone.utc)
+            by_matinale[mid] = {
+                "matinale_id":      mid,
+                "channel":          r["channel"],
+                "title":            r["title"],
+                "youtube_video_id": r["youtube_video_id"],
+                "published_at":     pub.isoformat(),
+                "snapshots":        [],
+            }
+        snap_at = r["snapshot_at"]
+        if snap_at.tzinfo is None:
+            snap_at = snap_at.replace(tzinfo=timezone.utc)
+        by_matinale[mid]["snapshots"].append({
+            "time":          snap_at.strftime("%H:%M"),
+            "snapshot_at":   snap_at.isoformat(),
+            "view_count":    r["view_count"],
+            "like_count":    r["like_count"],
+            "comment_count": r["comment_count"],
+        })
+
+    return list(by_matinale.values())
+
+
 @router.get("/timeline")
 def get_timeline(days: int = Query(60, ge=1, le=730)):
     since = _since(days)
