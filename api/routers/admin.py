@@ -229,15 +229,33 @@ def add_matinale(body: MatinaleAdd, x_admin_token: str = Header(default="")):
         raise HTTPException(status_code=404, detail="Chaîne introuvable.")
 
     video_id = _extract_video_id(body.youtube_url)
-    if query("SELECT id FROM matinales WHERE youtube_video_id = %s", (video_id,)):
+    meta     = _fetch_yt_metadata(video_id)
+
+    # Vérifie si cette vidéo exacte est déjà assignée ailleurs
+    same_vid = query(
+        "SELECT id FROM matinales WHERE youtube_video_id = %s",
+        (video_id,),
+    )
+    if same_vid:
         raise HTTPException(status_code=409, detail="Cette vidéo est déjà en base.")
 
-    meta = _fetch_yt_metadata(video_id)
+    # Si une matinale existe déjà pour cette chaîne ce jour-là → on la remplace
+    if meta.get("published_at"):
+        existing = query("""
+            SELECT id FROM matinales
+            WHERE channel_id = %s
+              AND DATE(published_at AT TIME ZONE 'UTC')
+                  = DATE(%s::timestamptz AT TIME ZONE 'UTC')
+        """, (body.channel_id, meta["published_at"]))
+        if existing:
+            # Supprime l'ancienne (cascade supprime aussi les snapshots)
+            execute("DELETE FROM matinales WHERE id = %s", (existing[0]["id"],))
+
     execute("""
         INSERT INTO matinales (channel_id, youtube_video_id, title, published_at, duration_seconds)
         VALUES (%s, %s, %s, %s, %s)
     """, (body.channel_id, meta["youtube_video_id"], meta["title"], meta["published_at"], meta["duration_seconds"]))
-    return {"ok": True, "video": meta}
+    return {"ok": True, "video": meta, "replaced": bool(existing if meta.get("published_at") else False)}
 
 
 # ── Admin : Jours exclus ──────────────────────────────────────────────────────

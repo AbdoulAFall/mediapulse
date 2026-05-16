@@ -285,15 +285,22 @@ function MatinalesTab({ token }: { token: string }) {
   const [addUrl, setAddUrl]       = useState("");
   const [actionStatus, setActionStatus] = useState<"idle"|"loading"|"ok"|"err">("idle");
 
+  // Charge les chaînes une seule fois (endpoint public, indépendant du token)
+  useEffect(() => {
+    fetch(`${API_URL}/api/channels`)
+      .then((r) => r.json())
+      .then(setChannels)
+      .catch(() => {});
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [mr, cr] = await Promise.all([
-        fetch(`${API_URL}/api/admin/matinales?days=${days}`, { headers: authHeaders(token) }),
-        fetch(`${API_URL}/api/channels`),
-      ]);
-      setMatinales(await mr.json());
-      setChannels(await cr.json());
+      const r = await fetch(`${API_URL}/api/admin/matinales?days=${days}`, { headers: authHeaders(token) });
+      if (!r.ok) throw new Error();
+      setMatinales(await r.json());
+    } catch {
+      setMatinales([]);
     } finally { setLoading(false); }
   }, [days, token]);
 
