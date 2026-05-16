@@ -13,6 +13,7 @@ from channel_config import CHANNELS
 import youtube_client as yt
 import storage
 import scorer
+from holidays_sn import is_holiday
 
 
 def _matches_hints(title: str, hints: list[str]) -> bool:
@@ -24,6 +25,15 @@ def _matches_hints(title: str, hints: list[str]) -> bool:
 def _is_weekend(day_str: str) -> bool:
     """True si la date (YYYY-MM-DD) est un samedi (5) ou dimanche (6)."""
     return datetime.strptime(day_str, "%Y-%m-%d").weekday() >= 5
+
+
+def _skip_day(day_str: str) -> tuple[bool, str]:
+    """Retourne (True, raison) si le jour doit être ignoré."""
+    if _is_weekend(day_str):
+        return True, "week-end"
+    if is_holiday(day_str):
+        return True, "jour férié sénégalais"
+    return False, ""
 
 DEFAULT_LOOKBACK_DAYS = 60
 
@@ -100,8 +110,10 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
             hints = ch.get("title_hints", [])
 
             for day, candidates in sorted(by_day.items()):
-                # ── Filtre week-end ──────────────────────────────────────
-                if _is_weekend(day):
+                # ── Filtre week-end et jours fériés ─────────────────────
+                skip, reason = _skip_day(day)
+                if skip:
+                    print(f"     {day} : ignoré ({reason})")
                     continue
 
                 # ── Filtre par title_hints (filtre dur si configuré) ─────
