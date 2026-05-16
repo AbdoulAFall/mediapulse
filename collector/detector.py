@@ -93,10 +93,13 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
                 minutes = dt.hour * 60 + dt.minute
                 return window_start <= minutes <= window_end
 
-            # Collecte tous les lives candidats dans la fenêtre de la chaîne
+            # Collecte tous les lives candidats
+            # Si title_hints configuré → pas de filtre horaire (les hints suffisent)
+            # Si pas de title_hints → filtre horaire strict pour éviter les faux positifs
+            has_hints = bool(ch.get("title_hints"))
             by_day: dict[str, list[dict]] = defaultdict(list)
             for video in yt.fetch_recent_videos(ch["playlist_id"], since):
-                if not in_window(video["published_at"]):
+                if not has_hints and not in_window(video["published_at"]):
                     continue
                 day = video["published_at"][:10]
                 by_day[day].append(video)
