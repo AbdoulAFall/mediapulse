@@ -51,9 +51,30 @@ def init_db():
                     comment_count INTEGER
                 );
             """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS reports (
+                    id          SERIAL PRIMARY KEY,
+                    matinale_id INTEGER REFERENCES matinales(id) ON DELETE CASCADE,
+                    reason      TEXT NOT NULL,
+                    comment     TEXT,
+                    status      TEXT DEFAULT 'pending',
+                    created_at  TIMESTAMPTZ DEFAULT NOW(),
+                    resolved_at TIMESTAMPTZ
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS excluded_days (
+                    id         SERIAL PRIMARY KEY,
+                    date       DATE UNIQUE NOT NULL,
+                    reason     TEXT,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_matinales_channel ON matinales(channel_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_matinales_published ON matinales(published_at);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_matinale ON view_snapshots(matinale_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_matinale ON reports(matinale_id);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);")
         conn.commit()
 
 
@@ -184,6 +205,17 @@ def get_matinale_ids_last_n_days(days: int = 60) -> list:
                   )
             """, (since, six_hours_ago))
             return cur.fetchall()
+
+
+def is_excluded_day(day_str: str) -> bool:
+    """Vérifie si le jour est exclu manuellement (table excluded_days)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM excluded_days WHERE date = %s::date",
+                (day_str,)
+            )
+            return cur.fetchone() is not None
 
 
 def get_todays_matinale_ids() -> list:

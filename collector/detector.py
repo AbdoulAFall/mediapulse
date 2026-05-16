@@ -33,6 +33,8 @@ def _skip_day(day_str: str) -> tuple[bool, str]:
         return True, "week-end"
     if is_holiday(day_str):
         return True, "jour férié sénégalais"
+    if storage.is_excluded_day(day_str):
+        return True, "jour exclu manuellement"
     return False, ""
 
 DEFAULT_LOOKBACK_DAYS = 60
