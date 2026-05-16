@@ -68,11 +68,12 @@ def _extract_video_id(url_or_id: str) -> str:
 
 
 def _fetch_yt_metadata(video_id: str) -> dict:
+    """Fetche métadonnées + stats YouTube en un seul appel."""
     if not YT_KEY:
         raise HTTPException(status_code=503, detail="YOUTUBE_API_KEY non configurée.")
     r = requests.get(f"{YT_BASE}/videos", params={
         "id": video_id,
-        "part": "snippet,contentDetails,liveStreamingDetails",
+        "part": "snippet,contentDetails,liveStreamingDetails,statistics",
         "key": YT_KEY,
     }, timeout=10)
     r.raise_for_status()
@@ -84,6 +85,7 @@ def _fetch_yt_metadata(video_id: str) -> dict:
     sn   = v["snippet"]
     live = v.get("liveStreamingDetails", {})
     cd   = v.get("contentDetails", {})
+    stats = v.get("statistics", {})
 
     m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", cd.get("duration", "") or "")
     duration = None
@@ -101,7 +103,19 @@ def _fetch_yt_metadata(video_id: str) -> dict:
         "title":            sn.get("title"),
         "published_at":     published_at,
         "duration_seconds": duration,
+        # Stats actuelles (pour snapshot immédiat)
+        "view_count":    int(stats.get("viewCount",    0) or 0),
+        "like_count":    int(stats.get("likeCount",    0) or 0),
+        "comment_count": int(stats.get("commentCount", 0) or 0),
     }
+
+
+def _insert_snapshot(matinale_id: int, meta: dict):
+    """Insère un snapshot de vues immédiatement après add/replace."""
+    execute("""
+        INSERT INTO view_snapshots (matinale_id, view_count, like_count, comment_count)
+        VALUES (%s, %s, %s, %s)
+    """, (matinale_id, meta.get("view_count"), meta.get("like_count"), meta.get("comment_count")))
 
 
 # ── Public : Signalement ──────────────────────────────────────────────────────
@@ -219,6 +233,8 @@ def replace_matinale(
         SET youtube_video_id = %s, title = %s, published_at = %s, duration_seconds = %s
         WHERE id = %s
     """, (meta["youtube_video_id"], meta["title"], meta["published_at"], meta["duration_seconds"], matinale_id))
+    # Snapshot immédiat avec les stats actuelles
+    _insert_snapshot(matinale_id, meta)
     return {"ok": True, "video": meta}
 
 
@@ -255,7 +271,15 @@ def add_matinale(body: MatinaleAdd, x_admin_token: str = Header(default="")):
         INSERT INTO matinales (channel_id, youtube_video_id, title, published_at, duration_seconds)
         VALUES (%s, %s, %s, %s, %s)
     """, (body.channel_id, meta["youtube_video_id"], meta["title"], meta["published_at"], meta["duration_seconds"]))
-    return {"ok": True, "video": meta, "replaced": bool(existing if meta.get("published_at") else False)}
+    # Récupère l'id de la matinale insérée pour le snapshot
+    new_row = query(
+        "SELECT id FROM matinales WHERE youtube_video_id = %s",
+        (meta["youtube_video_id"],),
+    )
+    if new_row:
+        _insert_snapshot(new_row[0]["id"], meta)
+    replaced = bool(existing) if meta.get("published_at") else False
+    return {"ok": True, "video": meta, "replaced": replaced}
 
 
 # ── Admin : Jours exclus ──────────────────────────────────────────────────────
