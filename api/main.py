@@ -1,9 +1,46 @@
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import stats, admin
+from database import execute
 
-app = FastAPI(title="MediaPulse API", version="1.0.0")
+
+def _init_tables():
+    """Crée les tables manquantes au démarrage (idempotent)."""
+    statements = [
+        """CREATE TABLE IF NOT EXISTS reports (
+            id          SERIAL PRIMARY KEY,
+            matinale_id INTEGER REFERENCES matinales(id) ON DELETE CASCADE,
+            reason      TEXT NOT NULL,
+            comment     TEXT,
+            status      TEXT DEFAULT 'pending',
+            created_at  TIMESTAMPTZ DEFAULT NOW(),
+            resolved_at TIMESTAMPTZ
+        )""",
+        """CREATE TABLE IF NOT EXISTS excluded_days (
+            id         SERIAL PRIMARY KEY,
+            date       DATE UNIQUE NOT NULL,
+            reason     TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_reports_matinale ON reports(matinale_id)",
+        "CREATE INDEX IF NOT EXISTS idx_reports_status   ON reports(status)",
+    ]
+    for sql in statements:
+        try:
+            execute(sql)
+        except Exception:
+            pass  # Table déjà existante ou erreur non bloquante
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _init_tables()
+    yield
+
+
+app = FastAPI(title="MediaPulse API", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
