@@ -16,6 +16,10 @@ on:
         description: 'Commande à exécuter (sync | detect | refresh | refresh_today)'
         default: 'sync'
         required: false
+      channel:
+        description: 'Chaîne à cibler (ex: "Walf TV", "TFM") — vide = toutes les chaînes'
+        default: ''
+        required: false
 
 jobs:
   sync:
@@ -47,10 +51,18 @@ jobs:
         run: python main.py refresh_today
 
       # ── Sync standard (détection + refresh 6h) : toutes les 30 min ────────
-      - name: Sync matinales (60 derniers jours)
+      - name: Sync matinales
         if: github.event_name != 'schedule' || !contains(github.event.schedule, '*/15')
         working-directory: collector
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python main.py ${{ github.event.inputs.command || 'sync' }} ${{ github.event.inputs.days || '60' }}
+        run: |
+          CMD="${{ github.event.inputs.command || 'sync' }}"
+          DAYS="${{ github.event.inputs.days || '60' }}"
+          CHANNEL="${{ github.event.inputs.channel }}"
+          if [ -n "$CHANNEL" ]; then
+            python main.py "$CMD" "$DAYS" "$CHANNEL"
+          else
+            python main.py "$CMD" "$DAYS"
+          fi

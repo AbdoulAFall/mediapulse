@@ -2,14 +2,15 @@
 MediaPulse — Collecteur de matinales TV sénégalaises
 
 Commandes :
-  python main.py sync             — Sync 60 derniers jours (détection + vues)
-  python main.py sync 730         — Sync 2 ans en arrière
-  python main.py detect           — Détecte uniquement les nouvelles matinales (60j)
-  python main.py detect 730       — Détecte sur 2 ans
-  python main.py refresh          — Met à jour les vues uniquement (seuil 6h)
-  python main.py refresh_today    — Snapshot vues des matinales d'aujourd'hui (seuil 15 min)
-  python main.py stats            — Rapport des 60 derniers jours
-  python main.py stats 730        — Rapport sur 2 ans
+  python main.py sync                    — Sync 60 derniers jours (toutes les chaînes)
+  python main.py sync 730                — Sync 2 ans en arrière
+  python main.py sync 730 "Walf TV"     — Sync 2 ans sur une seule chaîne
+  python main.py detect                  — Détecte uniquement les nouvelles matinales (60j)
+  python main.py detect 730 "TFM"        — Détecte sur 2 ans pour TFM uniquement
+  python main.py refresh                 — Met à jour les vues uniquement (seuil 6h)
+  python main.py refresh_today           — Snapshot vues des matinales d'aujourd'hui (seuil 15 min)
+  python main.py stats                   — Rapport des 60 derniers jours
+  python main.py stats 730               — Rapport sur 2 ans
 """
 import sys
 import os
@@ -40,17 +41,37 @@ def _parse_days(args: list[str], position: int = 1) -> int:
                 sys.exit(1)
             return days
         except ValueError:
-            print(f"⚠  '{args[position]}' n'est pas un nombre de jours valide.")
-            sys.exit(1)
+            # Ce n'est pas un nombre → c'est peut-être le filtre chaîne, on ignore
+            pass
     return DEFAULT_DAYS
 
 
-def cmd_sync(days: int = DEFAULT_DAYS):
+def _parse_channel_filter(args: list[str]) -> str | None:
+    """Retourne le nom de la chaîne si passé en 3e argument (après commande + jours)."""
+    if len(args) > 2:
+        return args[2].strip()
+    return None
+
+
+def _filter_channels(channels: list[dict], name_filter: str | None) -> list[dict]:
+    if not name_filter:
+        return channels
+    matched = [c for c in channels if name_filter.lower() in c["name"].lower()]
+    if not matched:
+        print(f"⚠  Aucune chaîne active ne correspond à '{name_filter}'.")
+        print(f"   Chaînes disponibles : {', '.join(c['name'] for c in channels)}")
+        sys.exit(1)
+    print(f"   → Filtre actif : {', '.join(c['name'] for c in matched)}")
+    return matched
+
+
+def cmd_sync(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     print(f"\n[1/4] Initialisation base de données...")
     storage.init_db()
 
     print(f"[2/4] Résolution des chaînes YouTube...")
     channels = detector.sync_channels()
+    channels = _filter_channels(channels, channel_filter)
 
     if not channels:
         print("Aucune chaîne active configurée.")
@@ -67,23 +88,24 @@ def cmd_sync(days: int = DEFAULT_DAYS):
     print(f"\n✓ Sync terminé — {new} nouvelle(s) matinale(s) détectée(s).\n")
 
 
-def cmd_detect(days: int = DEFAULT_DAYS):
+def cmd_detect(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     storage.init_db()
     print(f"\n[1/2] Résolution des chaînes...")
     channels = detector.sync_channels()
+    channels = _filter_channels(channels, channel_filter)
     print(f"\n[2/2] Détection des matinales ({days}j)...")
     new = detector.detect_matinales(channels, days=days)
     print(f"\n✓ {new} nouvelle(s) matinale(s) détectée(s).\n")
 
 
-def cmd_refresh(days: int = DEFAULT_DAYS):
+def cmd_refresh(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     storage.init_db()
     print(f"\nRefresh des compteurs de vues ({days}j)...")
     detector.refresh_view_counts(days=days)
     print()
 
 
-def cmd_refresh_today(_days: int = DEFAULT_DAYS):
+def cmd_refresh_today(_days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     """Snapshot toutes les 15 min pour les matinales d'aujourd'hui."""
     storage.init_db()
     print("\nRefresh vues J0 (seuil 15 min)...")
@@ -91,7 +113,7 @@ def cmd_refresh_today(_days: int = DEFAULT_DAYS):
     print()
 
 
-def cmd_stats(days: int = DEFAULT_DAYS):
+def cmd_stats(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     storage.init_db()
     report.print_stats(days)
 
@@ -111,9 +133,10 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    cmd = args[0]
-    days = _parse_days(args)
-    COMMANDS[cmd](days)
+    cmd            = args[0]
+    days           = _parse_days(args)
+    channel_filter = _parse_channel_filter(args)
+    COMMANDS[cmd](days, channel_filter)
 
 
 if __name__ == "__main__":
