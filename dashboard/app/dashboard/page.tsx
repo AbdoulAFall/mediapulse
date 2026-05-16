@@ -188,6 +188,17 @@ export default function Dashboard() {
 
         {/* Évolution vues J0 */}
         <div className="mb-6">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-xs font-bold uppercase tracking-widest"
+              style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+              Vues en temps réel · J0
+            </span>
+            <a href="/evolution"
+              className="text-xs font-bold uppercase tracking-widest hover:opacity-70 transition-opacity"
+              style={{ color: "var(--text-muted)", letterSpacing: "0.12em", textDecoration: "none" }}>
+              Voir le détail →
+            </a>
+          </div>
           <ViewEvolutionChart
             evolutions={evolution ?? []}
             date={todayDate}
