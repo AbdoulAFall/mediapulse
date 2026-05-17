@@ -44,11 +44,12 @@ export default function ScheduleGuide({ data }: { data: ScheduleEntry[] }) {
           <div className="flex flex-col shrink-0" style={{ width: 116 }}>
             <div style={{ height: 28 }} />
             {data.map((entry) => (
-              <div key={entry.channel}
-                className="flex items-center h-10 mb-2 text-xs font-bold uppercase"
-                style={{ color: "var(--ink)", letterSpacing: "0.05em" }}>
+              <a key={entry.channel}
+                href={`/emissions/${encodeURIComponent(entry.channel)}`}
+                className="flex items-center h-10 mb-2 text-xs font-bold uppercase hover:opacity-60 transition-opacity"
+                style={{ color: "var(--ink)", letterSpacing: "0.05em", textDecoration: "none" }}>
                 {entry.channel}
-              </div>
+              </a>
             ))}
           </div>
 
@@ -81,9 +82,11 @@ export default function ScheduleGuide({ data }: { data: ScheduleEntry[] }) {
 
                 return (
                   <div key={entry.channel} className="relative h-10 mb-2">
-                    <div className="absolute h-8 top-1 group cursor-default"
+                    <a href={`/emissions/${encodeURIComponent(entry.channel)}`}
+                      className="absolute h-8 top-1 group"
                       style={{ left: `${startPct}%`, width: `${widthPct}%`,
-                               background: color, opacity: 0.9 }}>
+                               background: color, opacity: 0.9, cursor: "pointer",
+                               textDecoration: "none", display: "block" }}>
                       {/* Label dans la barre */}
                       <span className="absolute inset-0 flex items-center px-2 text-xs font-bold text-white truncate"
                         style={{ fontSize: 11 }}>
@@ -111,7 +114,7 @@ export default function ScheduleGuide({ data }: { data: ScheduleEntry[] }) {
                              <strong>{entry.episode_count}</strong></p>
                         </div>
                       </div>
-                    </div>
+                    </a>
                   </div>
                 );
               })}
@@ -121,7 +124,7 @@ export default function ScheduleGuide({ data }: { data: ScheduleEntry[] }) {
 
         {/* Légende bas */}
         <p className="text-xs mt-4 pt-3" style={{ borderTop: "1px solid var(--border)", color: "var(--text-muted)" }}>
-          Survoler une barre pour le détail · ±X min = écart-type de l&apos;heure de début (régularité)
+          Cliquer sur une barre pour voir la fiche émission · Survoler pour le détail · ±X min = régularité de l&apos;heure de début
         </p>
       </div>
     </div>
