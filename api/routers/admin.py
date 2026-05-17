@@ -465,20 +465,33 @@ def _build_report_html(rows: list, date_str: str) -> str:
 </div></body></html>"""
 
 
+class ReportSendBody(BaseModel):
+    date: Optional[str] = None   # YYYY-MM-DD, défaut = aujourd'hui
+
+
 @router.post("/admin/report/send")
-def send_report_now(x_admin_token: str = Header(default="")):
-    """Envoie immédiatement le rapport des vues J0 à tous les abonnés actifs."""
+def send_report_now(body: ReportSendBody = ReportSendBody(), x_admin_token: str = Header(default="")):
+    """Envoie le rapport des vues pour une date donnée (défaut : aujourd'hui)."""
     require_admin(x_admin_token)
 
     if not RESEND_API_KEY:
         raise HTTPException(status_code=503, detail="RESEND_API_KEY non configurée.")
+
+    # Valide et parse la date
+    if body.date:
+        try:
+            report_date = datetime.strptime(body.date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Format de date invalide — utiliser YYYY-MM-DD.")
+    else:
+        report_date = datetime.now(timezone.utc).date()
 
     # Récupère les abonnés actifs
     subs = query("SELECT email FROM subscribers WHERE active = true")
     if not subs:
         raise HTTPException(status_code=400, detail="Aucun abonné actif à qui envoyer le rapport.")
 
-    # Récupère les matinales du jour avec leurs vues
+    # Récupère les matinales de la date choisie avec leurs vues
     rows = query("""
         SELECT
             c.name AS channel_name,
@@ -493,17 +506,16 @@ def send_report_now(x_admin_token: str = Header(default="")):
         LEFT JOIN view_snapshots first_vs ON first_vs.id = (
             SELECT id FROM view_snapshots WHERE matinale_id = m.id ORDER BY snapshot_at ASC LIMIT 1
         )
-        WHERE DATE(m.published_at AT TIME ZONE 'UTC') = CURRENT_DATE
+        WHERE DATE(m.published_at AT TIME ZONE 'UTC') = %s
         ORDER BY last_vs.view_count DESC NULLS LAST
-    """)
+    """, (str(report_date),))
 
     if not rows:
-        raise HTTPException(status_code=404, detail="Aucune matinale détectée aujourd'hui.")
+        raise HTTPException(status_code=404, detail=f"Aucune matinale trouvée pour le {report_date}.")
 
-    now = datetime.now(timezone.utc)
     fr_days   = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
     fr_months = ["","janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"]
-    date_str  = f"{fr_days[now.weekday()]} {now.day} {fr_months[now.month]} {now.year}"
+    date_str  = f"{fr_days[report_date.weekday()]} {report_date.day} {fr_months[report_date.month]} {report_date.year}"
 
     html    = _build_report_html(rows, date_str)
     to_list = [s["email"] for s in subs]

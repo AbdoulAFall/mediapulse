@@ -606,6 +606,7 @@ function SubscribersTab({ token }: { token: string }) {
   const [adding, setAdding]   = useState(false);
   const [sending, setSending] = useState<"idle"|"loading"|"ok"|"err">("idle");
   const [sendMsg, setSendMsg] = useState("");
+  const [reportDate, setReportDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -650,16 +651,18 @@ function SubscribersTab({ token }: { token: string }) {
   }
 
   async function doSendNow() {
-    if (!confirm(`Envoyer le rapport maintenant à ${subs.filter(s => s.active).length} abonné(s) ?`)) return;
+    if (!confirm(`Envoyer le rapport du ${reportDate} à ${subs.filter(s => s.active).length} abonné(s) ?`)) return;
     setSending("loading"); setSendMsg("");
     try {
       const r = await fetch(`${API_URL}/api/admin/report/send`, {
-        method: "POST", headers: authHeaders(token),
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ date: reportDate }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail);
       setSending("ok");
-      setSendMsg(`✓ Rapport envoyé à ${data.recipients.join(", ")} (${data.matinales} matinale(s))`);
+      setSendMsg(`✓ Rapport du ${reportDate} envoyé à ${data.recipients.join(", ")} (${data.matinales} matinale(s))`);
     } catch (e: unknown) {
       setSending("err");
       setSendMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
@@ -670,20 +673,36 @@ function SubscribersTab({ token }: { token: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Info + bouton envoi */}
-      <div className="flex items-center justify-between gap-4 px-4 py-3"
-        style={{ background: "var(--surface2)", border: "1px solid var(--border)" }}>
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-          📧 Rapport quotidien envoyé chaque jour à 13h UTC.
-          <strong style={{ color: "var(--ink)" }}> {activeCount} abonné{activeCount > 1 ? "s" : ""} actif{activeCount > 1 ? "s" : ""}.</strong>
+      {/* Info + envoi manuel */}
+      <div style={{ border: "1px solid var(--border)", padding: "16px 20px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Envoi manuel — {activeCount} abonné{activeCount > 1 ? "s" : ""} actif{activeCount > 1 ? "s" : ""}
         </p>
-        <button
-          onClick={doSendNow}
-          disabled={sending === "loading" || activeCount === 0}
-          className="px-4 py-2 text-xs font-bold uppercase tracking-wider whitespace-nowrap disabled:opacity-40 transition-opacity hover:opacity-80"
-          style={{ background: "var(--accent)", color: "white", flexShrink: 0 }}>
-          {sending === "loading" ? "Envoi…" : "▶ Envoyer maintenant"}
-        </button>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
+              Date du rapport
+            </label>
+            <input
+              type="date"
+              value={reportDate}
+              onChange={(e) => { setReportDate(e.target.value); setSending("idle"); setSendMsg(""); }}
+              className="text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+          <button
+            onClick={doSendNow}
+            disabled={sending === "loading" || activeCount === 0}
+            className="px-4 py-2 text-xs font-bold uppercase tracking-wider whitespace-nowrap disabled:opacity-40 transition-opacity hover:opacity-80"
+            style={{ background: "var(--accent)", color: "white" }}>
+            {sending === "loading" ? "Envoi…" : "▶ Envoyer"}
+          </button>
+        </div>
+        <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
+          📅 Rapport automatique chaque jour ouvré à 13h UTC.
+        </p>
       </div>
 
       {/* Feedback envoi */}
