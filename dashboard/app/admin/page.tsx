@@ -776,10 +776,23 @@ export default function AdminPage() {
   const [tab, setTab]           = useState<Tab>("reports");
   const [reportCount, setReportCount] = useState(0);
 
-  // Lit le token depuis localStorage au chargement
+  // Lit le token depuis localStorage et le valide contre l'API
   useEffect(() => {
     const t = localStorage.getItem("adminToken");
-    if (t) setToken(t);
+    if (!t) return;
+    // Validation silencieuse — si le token est rejeté, on efface et on redemande
+    fetch(`${API_URL}/api/admin/reports?status=pending`, {
+      headers: { "X-Admin-Token": t },
+    }).then((r) => {
+      if (r.ok) {
+        setToken(t);
+      } else {
+        localStorage.removeItem("adminToken");
+      }
+    }).catch(() => {
+      // API injoignable → on garde le token, on réessaiera au prochain chargement
+      setToken(t);
+    });
   }, []);
 
   // Compte les signalements en attente (badge)
