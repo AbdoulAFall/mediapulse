@@ -6,6 +6,7 @@ Endpoint public (sans auth) : POST /api/matinales/{id}/report
 """
 import os
 import re
+import json
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -361,3 +362,170 @@ def toggle_subscriber(sub_id: int, x_admin_token: str = Header(default="")):
 def delete_subscriber(sub_id: int, x_admin_token: str = Header(default="")):
     require_admin(x_admin_token)
     execute("DELETE FROM subscribers WHERE id = %s", (sub_id,))
+
+
+# ── Admin : Envoi manuel du rapport email ─────────────────────────────────────
+
+RESEND_API_KEY  = os.environ.get("RESEND_API_KEY", "")
+FROM_EMAIL      = os.environ.get("REPORT_FROM_EMAIL", "MediaPulse <rapports@mediapulse.sn>")
+DASHBOARD_URL   = os.environ.get("DASHBOARD_URL", "https://mediapulse.vercel.app")
+
+CHANNEL_COLORS = {
+    "TFM": "#d0021b", "RTS": "#1a1714", "2STV": "#c0392b",
+    "Sen TV": "#4a4440", "Walf TV": "#7a736a", "Solution TV": "#8b0000",
+}
+
+def _fmt_views(n) -> str:
+    if n is None: return "—"
+    n = int(n)
+    if n >= 1_000_000: return f"{n/1_000_000:.1f}M"
+    if n >= 1_000:     return f"{n/1_000:.0f}k"
+    return str(n)
+
+def _fmt_dur(s) -> str:
+    if not s: return "—"
+    h, r = divmod(int(s), 3600); m, _ = divmod(r, 60)
+    return f"{h}h{m:02d}" if h else f"{m} min"
+
+def _build_report_html(rows: list, date_str: str) -> str:
+    sorted_rows = sorted(rows, key=lambda r: r.get("view_count") or 0, reverse=True)
+    total = sum((r.get("view_count") or 0) for r in sorted_rows)
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+    rows_html = ""
+    for rank, r in enumerate(sorted_rows, 1):
+        ch     = r.get("channel_name", "?")
+        color  = CHANNEL_COLORS.get(ch, "#333")
+        views  = r.get("view_count")
+        first  = r.get("view_count_first")
+        delta  = (int(views) - int(first)) if (views and first) else None
+        share  = f"{int(views)/total*100:.0f}%" if (views and total) else "—"
+        pub_time = ""
+        if r.get("published_at"):
+            dt = r["published_at"]
+            if isinstance(dt, str):
+                dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+            pub_time = dt.strftime("%H:%M UTC")
+        delta_html = ""
+        if delta is not None:
+            sign  = "+" if delta >= 0 else ""
+            dcol  = "#2e7d32" if delta >= 0 else "#c62828"
+            delta_html = f'<span style="color:{dcol};font-size:12px;">{sign}{_fmt_views(delta)} depuis le matin</span>'
+        rows_html += f"""
+        <tr>
+          <td style="padding:12px 14px;border-bottom:1px solid #e8e5e1;font-family:Arial,sans-serif;font-size:13px;color:#7a736a;">{medals.get(rank, f'#{rank}')}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e8e5e1;">
+            <span style="display:inline-block;width:3px;height:14px;background:{color};margin-right:8px;vertical-align:middle;"></span>
+            <strong style="font-family:Arial,sans-serif;font-size:14px;color:#1a1714;">{ch}</strong>
+            <br><span style="font-family:Arial,sans-serif;font-size:11px;color:#aaa;">{pub_time} · {_fmt_dur(r.get('duration_seconds'))}</span>
+          </td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e8e5e1;text-align:right;">
+            <strong style="font-family:Georgia,serif;font-size:20px;color:#1a1714;">{_fmt_views(views)}</strong>
+            <span style="font-family:Arial,sans-serif;font-size:11px;color:#aaa;display:block;">{share}</span>
+          </td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e8e5e1;font-size:12px;color:#555;">{delta_html or '<span style="color:#ccc;">—</span>'}</td>
+          <td style="padding:12px 14px;border-bottom:1px solid #e8e5e1;text-align:center;">
+            <a href="https://www.youtube.com/watch?v={r.get('youtube_video_id','')}" style="font-family:Arial,sans-serif;font-size:11px;color:#d0021b;text-decoration:none;border:1px solid #d0021b;padding:3px 8px;">▶ YouTube</a>
+          </td>
+        </tr>"""
+
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>MediaPulse · {date_str}</title></head>
+<body style="margin:0;padding:0;background:#f0ede8;">
+<div style="max-width:620px;margin:24px auto;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+  <div style="background:#d0021b;height:4px;"></div>
+  <div style="background:#1a1714;padding:22px 28px 18px;">
+    <h1 style="margin:0;font-family:Georgia,serif;font-size:26px;color:#fff;">MEDIAPULSE</h1>
+    <p style="margin:4px 0 0;font-family:Arial,sans-serif;font-size:11px;color:#aaa;letter-spacing:2px;text-transform:uppercase;">Rapport vues · {date_str}</p>
+  </div>
+  <div style="background:#f5f3f1;padding:18px 28px;border-bottom:1px solid #e0ddd9;">
+    <p style="margin:0;font-family:Arial,sans-serif;font-size:11px;color:#7a736a;text-transform:uppercase;letter-spacing:1.5px;">Total vues · {len(sorted_rows)} matinale(s)</p>
+    <p style="margin:4px 0 0;font-family:Georgia,serif;font-size:32px;font-weight:bold;color:#1a1714;">{_fmt_views(total)}</p>
+  </div>
+  <div style="padding:20px 28px;">
+    <table style="width:100%;border-collapse:collapse;">
+      <thead><tr style="border-bottom:2px solid #1a1714;">
+        <th style="padding:8px 14px;font-family:Arial,sans-serif;font-size:10px;color:#7a736a;text-transform:uppercase;letter-spacing:1.5px;text-align:left;">#</th>
+        <th style="padding:8px 14px;font-family:Arial,sans-serif;font-size:10px;color:#7a736a;text-transform:uppercase;letter-spacing:1.5px;text-align:left;">Chaîne</th>
+        <th style="padding:8px 14px;font-family:Arial,sans-serif;font-size:10px;color:#7a736a;text-transform:uppercase;letter-spacing:1.5px;text-align:right;">Vues</th>
+        <th style="padding:8px 14px;font-family:Arial,sans-serif;font-size:10px;color:#7a736a;text-transform:uppercase;letter-spacing:1.5px;">Progression</th>
+        <th style="padding:8px 14px;font-family:Arial,sans-serif;font-size:10px;color:#7a736a;text-transform:uppercase;letter-spacing:1.5px;text-align:center;">Lien</th>
+      </tr></thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+  </div>
+  <div style="padding:14px 28px;border-top:1px solid #e0ddd9;background:#f5f3f1;">
+    <p style="margin:0;font-family:Arial,sans-serif;font-size:11px;color:#aaa;">
+      <a href="{DASHBOARD_URL}/timeline" style="color:#d0021b;text-decoration:none;">Voir l'évolution →</a> &nbsp;·&nbsp;
+      <a href="{DASHBOARD_URL}" style="color:#7a736a;text-decoration:none;">Dashboard</a> &nbsp;·&nbsp;
+      Envoyé le {datetime.now(timezone.utc).strftime("%d/%m/%Y à %H:%M UTC")}
+    </p>
+  </div>
+  <div style="background:#d0021b;height:3px;"></div>
+</div></body></html>"""
+
+
+@router.post("/admin/report/send")
+def send_report_now(x_admin_token: str = Header(default="")):
+    """Envoie immédiatement le rapport des vues J0 à tous les abonnés actifs."""
+    require_admin(x_admin_token)
+
+    if not RESEND_API_KEY:
+        raise HTTPException(status_code=503, detail="RESEND_API_KEY non configurée.")
+
+    # Récupère les abonnés actifs
+    subs = query("SELECT email FROM subscribers WHERE active = true")
+    if not subs:
+        raise HTTPException(status_code=400, detail="Aucun abonné actif à qui envoyer le rapport.")
+
+    # Récupère les matinales du jour avec leurs vues
+    rows = query("""
+        SELECT
+            c.name AS channel_name,
+            m.title, m.youtube_video_id, m.published_at, m.duration_seconds,
+            last_vs.view_count, last_vs.like_count, last_vs.snapshot_at,
+            first_vs.view_count AS view_count_first
+        FROM matinales m
+        JOIN channels c ON c.id = m.channel_id
+        LEFT JOIN view_snapshots last_vs ON last_vs.id = (
+            SELECT id FROM view_snapshots WHERE matinale_id = m.id ORDER BY snapshot_at DESC LIMIT 1
+        )
+        LEFT JOIN view_snapshots first_vs ON first_vs.id = (
+            SELECT id FROM view_snapshots WHERE matinale_id = m.id ORDER BY snapshot_at ASC LIMIT 1
+        )
+        WHERE DATE(m.published_at AT TIME ZONE 'UTC') = CURRENT_DATE
+        ORDER BY last_vs.view_count DESC NULLS LAST
+    """)
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Aucune matinale détectée aujourd'hui.")
+
+    now = datetime.now(timezone.utc)
+    fr_days   = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+    fr_months = ["","janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"]
+    date_str  = f"{fr_days[now.weekday()]} {now.day} {fr_months[now.month]} {now.year}"
+
+    html    = _build_report_html(rows, date_str)
+    to_list = [s["email"] for s in subs]
+
+    resp = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+        data=json.dumps({
+            "from":    FROM_EMAIL,
+            "to":      to_list,
+            "subject": f"📺 MediaPulse · Vues matinales du {date_str}",
+            "html":    html,
+        }),
+        timeout=15,
+    )
+
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Erreur Resend : {resp.text}")
+
+    return {
+        "ok":         True,
+        "recipients": to_list,
+        "matinales":  len(rows),
+        "resend_id":  resp.json().get("id"),
+    }

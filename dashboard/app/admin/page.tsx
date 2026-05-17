@@ -604,6 +604,8 @@ function SubscribersTab({ token }: { token: string }) {
   const [email, setEmail]     = useState("");
   const [name, setName]       = useState("");
   const [adding, setAdding]   = useState(false);
+  const [sending, setSending] = useState<"idle"|"loading"|"ok"|"err">("idle");
+  const [sendMsg, setSendMsg] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -647,16 +649,49 @@ function SubscribersTab({ token }: { token: string }) {
     load();
   }
 
+  async function doSendNow() {
+    if (!confirm(`Envoyer le rapport maintenant à ${subs.filter(s => s.active).length} abonné(s) ?`)) return;
+    setSending("loading"); setSendMsg("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/report/send`, {
+        method: "POST", headers: authHeaders(token),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail);
+      setSending("ok");
+      setSendMsg(`✓ Rapport envoyé à ${data.recipients.join(", ")} (${data.matinales} matinale(s))`);
+    } catch (e: unknown) {
+      setSending("err");
+      setSendMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
+    }
+  }
+
   const activeCount = subs.filter((s) => s.active).length;
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Info */}
-      <div className="px-4 py-3 text-xs"
-        style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-        📧 Ces adresses reçoivent le rapport quotidien des vues matinales (envoyé chaque jour à 13h UTC).
-        <strong style={{ color: "var(--ink)" }}> {activeCount} abonné{activeCount > 1 ? "s" : ""} actif{activeCount > 1 ? "s" : ""}.</strong>
+      {/* Info + bouton envoi */}
+      <div className="flex items-center justify-between gap-4 px-4 py-3"
+        style={{ background: "var(--surface2)", border: "1px solid var(--border)" }}>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          📧 Rapport quotidien envoyé chaque jour à 13h UTC.
+          <strong style={{ color: "var(--ink)" }}> {activeCount} abonné{activeCount > 1 ? "s" : ""} actif{activeCount > 1 ? "s" : ""}.</strong>
+        </p>
+        <button
+          onClick={doSendNow}
+          disabled={sending === "loading" || activeCount === 0}
+          className="px-4 py-2 text-xs font-bold uppercase tracking-wider whitespace-nowrap disabled:opacity-40 transition-opacity hover:opacity-80"
+          style={{ background: "var(--accent)", color: "white", flexShrink: 0 }}>
+          {sending === "loading" ? "Envoi…" : "▶ Envoyer maintenant"}
+        </button>
       </div>
+
+      {/* Feedback envoi */}
+      {sendMsg && (
+        <p className="text-xs px-1" style={{ color: sending === "ok" ? "#2e7d32" : "var(--accent)" }}>
+          {sendMsg}
+        </p>
+      )}
 
       {/* Formulaire ajout */}
       <div style={{ border: "1px solid var(--border)", padding: "16px 20px" }}>
