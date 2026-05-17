@@ -26,7 +26,10 @@ export default function TimelineChart({
 }) {
   if (!data.length) return null;
 
-  const channels = Object.keys(data[0]).filter((k) => k !== "date");
+  // Extrait toutes les chaînes présentes dans N'IMPORTE QUELLE ligne (pas seulement la première)
+  const channels = Array.from(
+    new Set(data.flatMap((row) => Object.keys(row).filter((k) => k !== "date")))
+  );
   const hasViews = data.some((d) => channels.some((ch) => (d[ch] as number) > 0));
   const tickInterval = Math.max(1, Math.floor(data.length / 8));
 
