@@ -203,7 +203,7 @@ export default function EmissionPage({ params }: { params: Promise<{ channel: st
           <StatCard
             label="Épisodes suivis"
             value={String(stats?.matinales_count ?? schedule?.episode_count ?? "—")}
-            sub={`sur ${days} jours`}
+            sub={period.year ? `en ${period.year}` : `sur ${period.days} jours`}
           />
           <StatCard
             label="Vues moyennes"
@@ -214,7 +214,7 @@ export default function EmissionPage({ params }: { params: Promise<{ channel: st
           <StatCard
             label="Total vues"
             value={fmt(stats?.total_views ?? null)}
-            sub={`sur ${days} jours`}
+            sub={period.year ? `en ${period.year}` : `sur ${period.days} jours`}
           />
           <StatCard
             label="Horaire moyen"
@@ -231,7 +231,7 @@ export default function EmissionPage({ params }: { params: Promise<{ channel: st
                 style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>Tendance</p>
               <h2 className="font-display font-bold mt-0.5"
                 style={{ fontSize: 18, color: "var(--ink)" }}>
-                Vues par épisode · {days} derniers jours
+                Vues par épisode · {period.year ?? `${period.days} derniers jours`}
               </h2>
             </div>
             <div className="px-4 py-5">
