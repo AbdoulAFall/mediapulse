@@ -54,6 +54,10 @@ class MatinaleReplace(BaseModel):
 class AdminLogin(BaseModel):
     password: str
 
+class SubscriberCreate(BaseModel):
+    email: str
+    name: Optional[str] = None
+
 
 # ── YouTube helpers ───────────────────────────────────────────────────────────
 
@@ -311,3 +315,49 @@ def add_excluded_day(body: ExcludedDayCreate, x_admin_token: str = Header(defaul
 def delete_excluded_day(day_id: int, x_admin_token: str = Header(default="")):
     require_admin(x_admin_token)
     execute("DELETE FROM excluded_days WHERE id = %s", (day_id,))
+
+
+# ── Admin : Abonnés rapport email ─────────────────────────────────────────────
+
+@router.get("/admin/subscribers")
+def list_subscribers(x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+    return query("""
+        SELECT id, email, name, active, created_at
+        FROM subscribers
+        ORDER BY created_at DESC
+    """)
+
+
+@router.post("/admin/subscribers", status_code=201)
+def add_subscriber(body: SubscriberCreate, x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+    email = body.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Adresse email invalide.")
+    try:
+        execute(
+            "INSERT INTO subscribers (email, name) VALUES (%s, %s)",
+            (email, body.name),
+        )
+    except Exception:
+        raise HTTPException(status_code=409, detail="Cet email est déjà abonné.")
+    return {"ok": True}
+
+
+@router.patch("/admin/subscribers/{sub_id}")
+def toggle_subscriber(sub_id: int, x_admin_token: str = Header(default="")):
+    """Active / désactive un abonné."""
+    require_admin(x_admin_token)
+    rows = query("SELECT active FROM subscribers WHERE id = %s", (sub_id,))
+    if not rows:
+        raise HTTPException(status_code=404, detail="Abonné introuvable.")
+    new_state = not rows[0]["active"]
+    execute("UPDATE subscribers SET active = %s WHERE id = %s", (new_state, sub_id))
+    return {"ok": True, "active": new_state}
+
+
+@router.delete("/admin/subscribers/{sub_id}", status_code=204)
+def delete_subscriber(sub_id: int, x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+    execute("DELETE FROM subscribers WHERE id = %s", (sub_id,))

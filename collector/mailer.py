@@ -216,10 +216,15 @@ def send_daily_report(rows: list, date_str: str,
     """
     Envoie le rapport quotidien via Resend.
 
+    Destinataires (par ordre de priorité) :
+      1. `recipients` passé explicitement
+      2. Table `subscribers` en base (abonnés actifs)
+      3. Variable d'env REPORT_EMAILS (fallback)
+
     Args:
         rows:       résultat de storage.get_todays_report_data()
         date_str:   ex. "lundi 19 mai 2026"
-        recipients: liste d'emails (défaut : REPORT_EMAILS env var)
+        recipients: liste d'emails (optionnel, override la BDD)
 
     Returns:
         True si envoi réussi, False sinon.
@@ -228,9 +233,22 @@ def send_daily_report(rows: list, date_str: str,
         print("  ⚠  RESEND_API_KEY manquante — email non envoyé.")
         return False
 
-    to = recipients or [e.strip() for e in REPORT_EMAILS.split(",") if e.strip()]
+    if recipients is None:
+        # Priorité 1 : abonnés en base
+        try:
+            import storage
+            to = storage.get_subscribers()
+        except Exception as e:
+            print(f"  ⚠  Impossible de lire les abonnés en base ({e}) — fallback env var.")
+            to = []
+        # Priorité 2 : env var en fallback
+        if not to:
+            to = [e.strip() for e in REPORT_EMAILS.split(",") if e.strip()]
+    else:
+        to = recipients
+
     if not to:
-        print("  ⚠  Aucun destinataire configuré (REPORT_EMAILS env var).")
+        print("  ⚠  Aucun destinataire (ni en base, ni dans REPORT_EMAILS).")
         return False
 
     if not rows:

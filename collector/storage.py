@@ -75,6 +75,15 @@ def init_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_matinale ON view_snapshots(matinale_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_matinale ON reports(matinale_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS subscribers (
+                    id         SERIAL PRIMARY KEY,
+                    email      TEXT UNIQUE NOT NULL,
+                    name       TEXT,
+                    active     BOOLEAN DEFAULT true,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
         conn.commit()
 
 
@@ -296,6 +305,14 @@ def get_todays_matinale_ids() -> list:
                   )
             """, (fifteen_min_ago,))
             return cur.fetchall()
+
+
+def get_subscribers() -> list[str]:
+    """Retourne les emails des abonnés actifs pour l'envoi du rapport quotidien."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT email FROM subscribers WHERE active = true ORDER BY created_at")
+            return [r["email"] for r in cur.fetchall()]
 
 
 def get_todays_report_data() -> list:

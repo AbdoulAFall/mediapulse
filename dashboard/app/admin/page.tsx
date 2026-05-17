@@ -41,7 +41,15 @@ interface Channel {
   name: string;
 }
 
-type Tab = "reports" | "matinales" | "excluded";
+interface Subscriber {
+  id: number;
+  email: string;
+  name: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+type Tab = "reports" | "matinales" | "excluded" | "subscribers";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -588,6 +596,141 @@ function ExcludedDaysTab({ token }: { token: string }) {
   );
 }
 
+// ── Onglet Abonnés ─────────────────────────────────────────────────────────
+
+function SubscribersTab({ token }: { token: string }) {
+  const [subs, setSubs]       = useState<Subscriber[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [email, setEmail]     = useState("");
+  const [name, setName]       = useState("");
+  const [adding, setAdding]   = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/subscribers`, { headers: authHeaders(token) });
+      setSubs(await r.json());
+    } finally { setLoading(false); }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function doAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email) return;
+    setAdding(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/subscribers`, {
+        method: "POST", headers: authHeaders(token),
+        body: JSON.stringify({ email: email.trim(), name: name.trim() || null }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail);
+      setEmail(""); setName("");
+      load();
+    } catch (e: unknown) {
+      alert(`Erreur : ${e instanceof Error ? e.message : "Erreur"}`);
+    } finally { setAdding(false); }
+  }
+
+  async function doToggle(id: number) {
+    await fetch(`${API_URL}/api/admin/subscribers/${id}`, {
+      method: "PATCH", headers: authHeaders(token),
+    });
+    load();
+  }
+
+  async function doDelete(id: number, email: string) {
+    if (!confirm(`Supprimer ${email} de la liste ?`)) return;
+    await fetch(`${API_URL}/api/admin/subscribers/${id}`, {
+      method: "DELETE", headers: authHeaders(token),
+    });
+    load();
+  }
+
+  const activeCount = subs.filter((s) => s.active).length;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Info */}
+      <div className="px-4 py-3 text-xs"
+        style={{ background: "var(--surface2)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+        📧 Ces adresses reçoivent le rapport quotidien des vues matinales (envoyé chaque jour à 13h UTC).
+        <strong style={{ color: "var(--ink)" }}> {activeCount} abonné{activeCount > 1 ? "s" : ""} actif{activeCount > 1 ? "s" : ""}.</strong>
+      </div>
+
+      {/* Formulaire ajout */}
+      <div style={{ border: "1px solid var(--border)", padding: "16px 20px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-4"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Ajouter un abonné
+        </p>
+        <form onSubmit={doAdd} className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1" style={{ minWidth: 200 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Email *</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+              placeholder="contact@exemple.com"
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+          </div>
+          <div className="flex-1" style={{ minWidth: 160 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Nom (optionnel)</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="Prénom Nom"
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+          </div>
+          <button type="submit" disabled={!email || adding}
+            className="px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
+            style={{ background: "var(--ink)", color: "white" }}>
+            {adding ? "…" : "+ Ajouter"}
+          </button>
+        </form>
+      </div>
+
+      {/* Liste */}
+      {loading && <p className="text-xs" style={{ color: "var(--text-muted)" }}>Chargement…</p>}
+      {!loading && subs.length === 0 && (
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Aucun abonné pour l&apos;instant.</p>
+      )}
+      {subs.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {subs.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-4 px-4 py-3"
+              style={{
+                border: "1px solid var(--border)",
+                background: s.active ? "var(--surface)" : "var(--surface2)",
+                opacity: s.active ? 1 : 0.6,
+              }}>
+              <div className="flex items-center gap-3 min-w-0">
+                {/* Indicateur actif */}
+                <div style={{
+                  width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                  background: s.active ? "#2e7d32" : "var(--border)",
+                }} />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: "var(--ink)" }}>
+                    {s.email}
+                  </p>
+                  {s.name && (
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>{s.name}</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-2 flex-shrink-0">
+                <ActionBtn
+                  label={s.active ? "⏸ Désactiver" : "▶ Activer"}
+                  onClick={() => doToggle(s.id)}
+                />
+                <ActionBtn label="✕" onClick={() => doDelete(s.id, s.email)} danger />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page principale ────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -635,9 +778,10 @@ export default function AdminPage() {
   }
 
   const TABS: { key: Tab; label: string; badge?: number }[] = [
-    { key: "reports",  label: "Signalements",  badge: reportCount },
-    { key: "matinales",label: "Matinales"                          },
-    { key: "excluded", label: "Jours exclus"                       },
+    { key: "reports",     label: "Signalements", badge: reportCount },
+    { key: "matinales",   label: "Matinales"                        },
+    { key: "excluded",    label: "Jours exclus"                     },
+    { key: "subscribers", label: "Abonnés email"                    },
   ];
 
   // ── Écran de connexion ────────────────────────────────────────────────
@@ -733,9 +877,10 @@ export default function AdminPage() {
         </div>
 
         {/* Contenu de l'onglet */}
-        {tab === "reports"   && <ReportsTab   token={token} />}
-        {tab === "matinales" && <MatinalesTab token={token} />}
-        {tab === "excluded"  && <ExcludedDaysTab token={token} />}
+        {tab === "reports"     && <ReportsTab      token={token} />}
+        {tab === "matinales"   && <MatinalesTab    token={token} />}
+        {tab === "excluded"    && <ExcludedDaysTab token={token} />}
+        {tab === "subscribers" && <SubscribersTab  token={token} />}
       </main>
     </div>
   );
