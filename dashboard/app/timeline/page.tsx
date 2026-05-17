@@ -136,11 +136,15 @@ export default function TimelinePage() {
     ? Object.keys(data[0]).filter((k) => k !== "date")
     : [];
 
-  // Init sélection quand les données arrivent
+  // Init/sync sélection quand les données arrivent ou changent de période
   useEffect(() => {
-    if (allChannels.length > 0 && selected.length === 0) {
-      setSelected(allChannels);
-    }
+    if (allChannels.length === 0) return;
+    setSelected((prev) => {
+      // Garde les chaînes déjà sélectionnées qui existent dans les nouvelles données
+      const valid = prev.filter((ch) => allChannels.includes(ch));
+      // Si aucune chaîne valide (premier chargement), tout sélectionner
+      return valid.length > 0 ? valid : allChannels;
+    });
   }, [allChannels.join(",")]);
 
   function toggleChannel(name: string) {
@@ -214,7 +218,7 @@ export default function TimelinePage() {
               <span className="text-xs font-bold uppercase tracking-widest mr-2"
                 style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>Période</span>
               {PERIODS.map((p) => (
-                <button key={p.value} onClick={() => { setDays(p.value); setSelected([]); }}
+                <button key={p.value} onClick={() => setDays(p.value)}
                   className="px-3 py-1 text-xs font-semibold transition-all"
                   style={{
                     background: days === p.value ? "var(--ink)" : "transparent",
@@ -232,14 +236,17 @@ export default function TimelinePage() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold uppercase tracking-widest"
                 style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>Chaînes</span>
-              <button onClick={() => setSelected(allChannels)}
+              <button
+                onClick={() => setSelected(
+                  selected.length === allChannels.length ? [] : allChannels
+                )}
                 className="text-xs font-semibold px-2 py-1"
                 style={{
                   background: selected.length === allChannels.length ? "var(--ink)" : "transparent",
                   color:      selected.length === allChannels.length ? "white" : "var(--text-muted)",
                   border: "1px solid var(--border)",
                 }}>
-                Toutes
+                {selected.length === allChannels.length ? "Tout désélectionner" : "Toutes"}
               </button>
               {allChannels.map((ch, idx) => {
                 const active = selected.includes(ch);
