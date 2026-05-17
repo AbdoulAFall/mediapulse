@@ -15,13 +15,18 @@ Commandes :
   python main.py stats                   — Rapport des 60 derniers jours
   python main.py stats 730               — Rapport sur 2 ans
 
+  python main.py report_today            — Envoie le rapport email des vues J0 (via Resend)
+                                             Variables requises : RESEND_API_KEY, REPORT_EMAILS
+
 Stratégie recommandée en production (cron Railway) :
   Toutes les 30 min  →  detect          (détection nouvelles matinales, fenêtre 2j)
   Toutes les 30 min  →  refresh_smart   (mise à jour vues, logique tiered)
   Toutes les 15 min  →  refresh_today   (vues temps réel J0, pendant 6h–12h UTC)
+  Chaque jour 13h UTC →  report_today   (rapport email bilan matinales)
 """
 import sys
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Charge le .env si présent
@@ -36,6 +41,7 @@ if env_file.exists():
 import storage
 import detector
 import report
+import mailer
 
 DEFAULT_DAYS = 60
 
@@ -134,6 +140,26 @@ def cmd_stats(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     report.print_stats(days)
 
 
+def cmd_report_today(_days: int = DEFAULT_DAYS, _channel_filter: str | None = None):
+    """Envoie le rapport email des vues J0 via Resend."""
+    storage.init_db()
+    print("\nGénération du rapport vues J0...")
+    rows = storage.get_todays_report_data()
+    if not rows:
+        print("  Aucune matinale détectée aujourd'hui.")
+        return
+    print(f"  {len(rows)} matinale(s) trouvée(s)")
+    date_str = datetime.now(timezone.utc).strftime("%A %d %B %Y")
+    # Traduction jours/mois en français (Python locale non garantie sur Railway)
+    _fr_days   = ["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"]
+    _fr_months = ["","janvier","février","mars","avril","mai","juin",
+                  "juillet","août","septembre","octobre","novembre","décembre"]
+    now = datetime.now(timezone.utc)
+    date_str = f"{_fr_days[now.weekday()]} {now.day} {_fr_months[now.month]} {now.year}"
+    mailer.send_daily_report(rows, date_str)
+    print()
+
+
 COMMANDS = {
     "sync":          cmd_sync,
     "detect":        cmd_detect,
@@ -141,6 +167,7 @@ COMMANDS = {
     "refresh_smart": cmd_refresh_smart,
     "refresh_today": cmd_refresh_today,
     "stats":         cmd_stats,
+    "report_today":  cmd_report_today,
 }
 
 

@@ -296,3 +296,50 @@ def get_todays_matinale_ids() -> list:
                   )
             """, (fifteen_min_ago,))
             return cur.fetchall()
+
+
+def get_todays_report_data() -> list:
+    """
+    Données complètes pour le rapport email J0 :
+    Pour chaque matinale d'aujourd'hui → dernier snapshot + snapshot précédent
+    (pour calculer le delta de vues depuis le matin).
+    """
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    c.name                  AS channel_name,
+                    m.title,
+                    m.youtube_video_id,
+                    m.published_at,
+                    m.duration_seconds,
+                    -- Dernier snapshot
+                    last_vs.view_count      AS view_count,
+                    last_vs.like_count,
+                    last_vs.snapshot_at,
+                    -- Premier snapshot du jour (pour delta)
+                    first_vs.view_count     AS view_count_first,
+                    first_vs.snapshot_at    AS snapshot_at_first,
+                    -- Nombre total de snapshots pris aujourd'hui
+                    COUNT(vs.id)            AS snapshot_count
+                FROM matinales m
+                JOIN channels c ON c.id = m.channel_id
+                LEFT JOIN view_snapshots last_vs ON last_vs.id = (
+                    SELECT id FROM view_snapshots
+                    WHERE matinale_id = m.id
+                    ORDER BY snapshot_at DESC LIMIT 1
+                )
+                LEFT JOIN view_snapshots first_vs ON first_vs.id = (
+                    SELECT id FROM view_snapshots
+                    WHERE matinale_id = m.id
+                    ORDER BY snapshot_at ASC LIMIT 1
+                )
+                LEFT JOIN view_snapshots vs ON vs.matinale_id = m.id
+                WHERE DATE(m.published_at AT TIME ZONE 'UTC') = CURRENT_DATE
+                GROUP BY
+                    c.name, m.title, m.youtube_video_id, m.published_at, m.duration_seconds,
+                    last_vs.view_count, last_vs.like_count, last_vs.snapshot_at,
+                    first_vs.view_count, first_vs.snapshot_at
+                ORDER BY last_vs.view_count DESC NULLS LAST
+            """)
+            return cur.fetchall()
