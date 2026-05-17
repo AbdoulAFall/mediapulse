@@ -207,6 +207,65 @@ def get_matinale_ids_last_n_days(days: int = 60) -> list:
             return cur.fetchall()
 
 
+def get_matinale_ids_tiered() -> list:
+    """
+    Sélection des matinales à rafraîchir selon leur ancienneté :
+
+      J0–J3   (chaudes)  → pas de snapshot depuis 6h
+      J4–J30  (tièdes)   → pas de snapshot depuis 24h
+      J31+    (froides)  → ignorées (les vues n'évoluent plus significativement)
+
+    Retourne une liste de dict {id, youtube_video_id, age_days} triée du plus récent.
+    """
+    now = datetime.now(timezone.utc)
+    hot_since   = now - timedelta(days=3)
+    warm_since  = now - timedelta(days=30)
+    hot_thresh  = now - timedelta(hours=6)
+    warm_thresh = now - timedelta(hours=24)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT m.id, m.youtube_video_id,
+                       EXTRACT(EPOCH FROM (NOW() - m.published_at)) / 86400 AS age_days
+                FROM matinales m
+                WHERE
+                    -- Fenêtre chaude : J0–J3, rafraîchir si pas de snapshot < 6h
+                    (
+                        m.published_at >= %(hot_since)s
+                        AND (
+                            NOT EXISTS (SELECT 1 FROM view_snapshots vs WHERE vs.matinale_id = m.id)
+                            OR (
+                                SELECT snapshot_at FROM view_snapshots
+                                WHERE matinale_id = m.id
+                                ORDER BY snapshot_at DESC LIMIT 1
+                            ) < %(hot_thresh)s
+                        )
+                    )
+                    OR
+                    -- Fenêtre tiède : J4–J30, rafraîchir si pas de snapshot < 24h
+                    (
+                        m.published_at >= %(warm_since)s
+                        AND m.published_at < %(hot_since)s
+                        AND (
+                            NOT EXISTS (SELECT 1 FROM view_snapshots vs WHERE vs.matinale_id = m.id)
+                            OR (
+                                SELECT snapshot_at FROM view_snapshots
+                                WHERE matinale_id = m.id
+                                ORDER BY snapshot_at DESC LIMIT 1
+                            ) < %(warm_thresh)s
+                        )
+                    )
+                ORDER BY m.published_at DESC
+            """, {
+                "hot_since":   hot_since,
+                "warm_since":  warm_since,
+                "hot_thresh":  hot_thresh,
+                "warm_thresh": warm_thresh,
+            })
+            return cur.fetchall()
+
+
 def is_excluded_day(day_str: str) -> bool:
     """Vérifie si le jour est exclu manuellement (table excluded_days)."""
     with get_conn() as conn:

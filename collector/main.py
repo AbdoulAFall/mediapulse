@@ -7,10 +7,18 @@ Commandes :
   python main.py sync 730 "Walf TV"     — Sync 2 ans sur une seule chaîne
   python main.py detect                  — Détecte uniquement les nouvelles matinales (60j)
   python main.py detect 730 "TFM"        — Détecte sur 2 ans pour TFM uniquement
-  python main.py refresh                 — Met à jour les vues uniquement (seuil 6h)
+  python main.py refresh                 — Met à jour les vues uniformément (seuil 6h, 60j)
+  python main.py refresh_smart           — ★ Refresh intelligent 3 vitesses :
+                                             J0–J3 si >6h · J4–J30 si >24h · J31+ ignoré
+                                             (~10–30 vidéos/run au lieu de 300)
   python main.py refresh_today           — Snapshot vues des matinales d'aujourd'hui (seuil 15 min)
   python main.py stats                   — Rapport des 60 derniers jours
   python main.py stats 730               — Rapport sur 2 ans
+
+Stratégie recommandée en production (cron Railway) :
+  Toutes les 30 min  →  detect          (détection nouvelles matinales, fenêtre 2j)
+  Toutes les 30 min  →  refresh_smart   (mise à jour vues, logique tiered)
+  Toutes les 15 min  →  refresh_today   (vues temps réel J0, pendant 6h–12h UTC)
 """
 import sys
 import os
@@ -82,8 +90,8 @@ def cmd_sync(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
         print(f"      ⏳ Historique long — cette opération peut prendre 20–30 min.")
     new = detector.detect_matinales(channels, days=days)
 
-    print(f"\n[4/4] Refresh des compteurs de vues ({days}j)...")
-    detector.refresh_view_counts(days=days)
+    print(f"\n[4/4] Refresh des compteurs de vues (mode smart)...")
+    detector.refresh_view_counts_smart()
 
     print(f"\n✓ Sync terminé — {new} nouvelle(s) matinale(s) détectée(s).\n")
 
@@ -100,8 +108,16 @@ def cmd_detect(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
 
 def cmd_refresh(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     storage.init_db()
-    print(f"\nRefresh des compteurs de vues ({days}j)...")
+    print(f"\nRefresh des compteurs de vues ({days}j, seuil 6h uniforme)...")
     detector.refresh_view_counts(days=days)
+    print()
+
+
+def cmd_refresh_smart(_days: int = DEFAULT_DAYS, channel_filter: str | None = None):
+    """Refresh intelligent : J0–J3 toutes les 6h, J4–J30 toutes les 24h, J31+ ignoré."""
+    storage.init_db()
+    print("\nRefresh intelligent des vues (3 vitesses)...")
+    detector.refresh_view_counts_smart()
     print()
 
 
@@ -119,11 +135,12 @@ def cmd_stats(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
 
 
 COMMANDS = {
-    "sync": cmd_sync,
-    "detect": cmd_detect,
-    "refresh": cmd_refresh,
+    "sync":          cmd_sync,
+    "detect":        cmd_detect,
+    "refresh":       cmd_refresh,
+    "refresh_smart": cmd_refresh_smart,
     "refresh_today": cmd_refresh_today,
-    "stats": cmd_stats,
+    "stats":         cmd_stats,
 }
 
 

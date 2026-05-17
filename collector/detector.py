@@ -173,6 +173,37 @@ def refresh_view_counts(days: int = DEFAULT_LOOKBACK_DAYS):
         print(f"     ERREUR : {e}")
 
 
+def refresh_view_counts_smart():
+    """
+    Refresh intelligent à 3 vitesses pour minimiser les appels API YouTube :
+
+      J0–J3   (chaudes)  → snapshot si absent ou vieux de plus de 6h
+      J4–J30  (tièdes)   → snapshot si absent ou vieux de plus de 24h
+      J31+    (froides)  → ignorées (vues quasi-stables)
+
+    En pratique : ~10–30 vidéos par run vs 300 avec refresh_view_counts(60).
+    """
+    rows = storage.get_matinale_ids_tiered()
+    if not rows:
+        print("  Aucune mise à jour nécessaire (toutes les vues sont à jour).")
+        return
+
+    hot   = [r for r in rows if r["age_days"] <= 3]
+    warm  = [r for r in rows if 3 < r["age_days"] <= 30]
+    print(f"  → {len(hot)} vidéo(s) chaude(s) (J0–J3) + {len(warm)} tiède(s) (J4–J30) à rafraîchir")
+
+    video_ids = [r["youtube_video_id"] for r in rows]
+    id_map    = {r["youtube_video_id"]: r["id"] for r in rows}
+
+    try:
+        stats = yt.fetch_video_stats(video_ids)
+        for vid_id, s in stats.items():
+            storage.insert_snapshot(id_map[vid_id], s)
+        print(f"     {len(stats)} snapshot(s) enregistré(s)")
+    except Exception as e:
+        print(f"     ERREUR : {e}")
+
+
 def refresh_today_views():
     """Snapshot des vues pour les matinales d'aujourd'hui (refresh toutes les 15 min)."""
     rows = storage.get_todays_matinale_ids()
