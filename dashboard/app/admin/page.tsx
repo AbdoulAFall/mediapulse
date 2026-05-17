@@ -598,9 +598,9 @@ export default function AdminPage() {
   const [tab, setTab]           = useState<Tab>("reports");
   const [reportCount, setReportCount] = useState(0);
 
-  // Lit le token depuis sessionStorage au chargement
+  // Lit le token depuis localStorage au chargement
   useEffect(() => {
-    const t = sessionStorage.getItem("adminToken");
+    const t = localStorage.getItem("adminToken");
     if (t) setToken(t);
   }, []);
 
@@ -624,13 +624,13 @@ export default function AdminPage() {
       });
       if (!r.ok) { setLoginErr(true); return; }
       const { token: t } = await r.json();
-      sessionStorage.setItem("adminToken", t);
+      localStorage.setItem("adminToken", t);
       setToken(t);
     } finally { setLogging(false); }
   }
 
   function handleLogout() {
-    sessionStorage.removeItem("adminToken");
+    localStorage.removeItem("adminToken");
     setToken(null);
   }
 
