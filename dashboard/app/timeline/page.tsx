@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import useSWR from "swr";
+import PeriodSelector, { Period, periodToParams } from "@/components/PeriodSelector";
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid,
@@ -120,13 +121,13 @@ function ChartTooltip({ active, payload, label, mode, channels, allData }: {
 
 // ── Page principale ────────────────────────────────────────────────────────────
 export default function TimelinePage() {
-  const [days, setDays]         = useState(60);
+  const [period, setPeriod]     = useState<Period>({ days: 60, year: null });
   const [mode, setMode]         = useState<Mode>("cumul");
   const [selected, setSelected] = useState<string[]>([]);
   const [showTable, setShowTable] = useState(false);
 
   const { data, isLoading } = useSWR<Row[]>(
-    `${API_URL}/api/timeline?days=${days}`,
+    `${API_URL}/api/timeline?${periodToParams(period)}`,
     (url: string) => fetch(url).then((r) => r.json()),
     { dedupingInterval: 5 * 60 * 1000, revalidateOnFocus: false }
   );
@@ -214,21 +215,7 @@ export default function TimelinePage() {
           <div className="px-5 py-4 flex flex-wrap items-center gap-4">
 
             {/* Période */}
-            <div className="flex items-center gap-1 flex-wrap">
-              <span className="text-xs font-bold uppercase tracking-widest mr-2"
-                style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>Période</span>
-              {PERIODS.map((p) => (
-                <button key={p.value} onClick={() => setDays(p.value)}
-                  className="px-3 py-1 text-xs font-semibold transition-all"
-                  style={{
-                    background: days === p.value ? "var(--ink)" : "transparent",
-                    color:      days === p.value ? "white"      : "var(--text-muted)",
-                    border:     "1px solid var(--border)",
-                  }}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <PeriodSelector value={period} onChange={(p) => { setPeriod(p); }} />
 
             <div style={{ width: 1, height: 20, background: "var(--border)" }} />
 

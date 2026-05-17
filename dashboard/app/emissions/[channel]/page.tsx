@@ -5,6 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip,
   CartesianGrid, ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import PeriodSelector, { Period, periodToParams } from "@/components/PeriodSelector";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -102,21 +103,19 @@ export default function EmissionPage({ params }: { params: Promise<{ channel: st
   const channel = decodeURIComponent(channelSlug);
   const color   = CHANNEL_COLORS[channel] ?? FALLBACK;
 
-  const [days, setDays] = useState(60);
+  const [period, setPeriod] = useState<Period>({ days: 60, year: null });
+  const pq = periodToParams(period);
+  const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
   // Données schedule (horaires moyens)
   const { data: scheduleAll } = useSWR<ScheduleEntry[]>(
-    `${API_URL}/api/schedule?days=${days}`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 5 * 60 * 1000 }
+    `${API_URL}/api/schedule?${pq}`, fetcher, { dedupingInterval: 5 * 60 * 1000 }
   );
   const schedule = scheduleAll?.find((s) => s.channel === channel);
 
   // Stats globales
   const { data: statsAll } = useSWR(
-    `${API_URL}/api/stats?days=${days}`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 5 * 60 * 1000 }
+    `${API_URL}/api/stats?${pq}`, fetcher, { dedupingInterval: 5 * 60 * 1000 }
   );
   const stats: StatsChannel | undefined = statsAll?.channels?.find(
     (c: StatsChannel) => c.name === channel
@@ -124,16 +123,13 @@ export default function EmissionPage({ params }: { params: Promise<{ channel: st
 
   // Matinales (triées par vues pour le top)
   const { data: matinales } = useSWR<Matinale[]>(
-    `${API_URL}/api/matinales?days=${days}&channel=${encodeURIComponent(channel)}&limit=200`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 5 * 60 * 1000 }
+    `${API_URL}/api/matinales?${pq}&channel=${encodeURIComponent(channel)}&limit=200`,
+    fetcher, { dedupingInterval: 5 * 60 * 1000 }
   );
 
   // Timeline (pour le graphique tendance)
   const { data: timeline } = useSWR<Record<string, number | string>[]>(
-    `${API_URL}/api/timeline?days=${days}`,
-    (url: string) => fetch(url).then((r) => r.json()),
-    { dedupingInterval: 5 * 60 * 1000 }
+    `${API_URL}/api/timeline?${pq}`, fetcher, { dedupingInterval: 5 * 60 * 1000 }
   );
 
   // Top 5 épisodes (par vues)
@@ -199,21 +195,7 @@ export default function EmissionPage({ params }: { params: Promise<{ channel: st
       <main className="max-w-5xl mx-auto px-6 py-8 flex flex-col gap-8">
 
         {/* ── Sélecteur période ── */}
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-bold uppercase tracking-widest mr-2"
-            style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>Période</span>
-          {PERIODS.map((p) => (
-            <button key={p.value} onClick={() => setDays(p.value)}
-              className="px-3 py-1 text-xs font-semibold"
-              style={{
-                background: days === p.value ? "var(--ink)" : "transparent",
-                color:      days === p.value ? "white"      : "var(--text-muted)",
-                border:     "1px solid var(--border)",
-              }}>
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <PeriodSelector value={period} onChange={setPeriod} />
 
         {/* ── KPIs ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-px"

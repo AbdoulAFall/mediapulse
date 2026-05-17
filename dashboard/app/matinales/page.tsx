@@ -138,6 +138,43 @@ function FilterBar({
           Filtres
         </p>
 
+        {/* Ligne 0 : raccourcis années */}
+        {(() => {
+          const currentYear = new Date().getFullYear();
+          const years = Array.from({ length: currentYear - 2024 + 1 }, (_, i) => 2024 + i);
+          const yearColors: Record<number, string> = { 2024: "#7a736a", 2025: "#4a4440", 2026: "var(--accent)" };
+          const activeYear = years.find((y) =>
+            filters.date_from === `${y}-01-01` &&
+            (filters.date_to === `${y}-12-31` || (y === currentYear && filters.date_to === ""))
+          );
+          return (
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>Année</span>
+              {years.map((y) => {
+                const col = yearColors[y] ?? "var(--ink)";
+                const isActive = activeYear === y;
+                return (
+                  <button key={y}
+                    onClick={() => onChange({
+                      ...filters,
+                      date_from: `${y}-01-01`,
+                      date_to: y === currentYear ? "" : `${y}-12-31`,
+                    })}
+                    className="text-xs font-bold px-3 py-1"
+                    style={{
+                      background: isActive ? col : "transparent",
+                      color:      isActive ? "white" : col,
+                      border:     `1px solid ${col}`,
+                    }}>
+                    {y}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* Ligne 1 : recherche + dates */}
         <div className="flex flex-wrap gap-3 mb-3">
           <input

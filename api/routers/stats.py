@@ -12,6 +12,15 @@ def _since(days: int) -> datetime:
     return datetime.now(timezone.utc) - timedelta(days=days)
 
 
+def _date_range(days: int, year: int | None) -> tuple[datetime, datetime | None]:
+    """Retourne (since, until). until=None = pas de borne supérieure."""
+    if year:
+        since = datetime(year, 1, 1, tzinfo=timezone.utc)
+        until = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        return since, until
+    return _since(days), None
+
+
 def _fmt_duration(s: int | None) -> str | None:
     if not s or s <= 0:
         return None
@@ -28,10 +37,15 @@ def get_channels():
 
 
 @router.get("/stats", response_model=StatsResponse)
-def get_stats(days: int = Query(60, ge=1, le=730)):
+def get_stats(
+    days: int = Query(60, ge=1, le=730),
+    year: int | None = Query(None, ge=2020, le=2030),
+):
     try:
-        since = _since(days)
-        rows = query("""
+        since, until = _date_range(days, year)
+        date_filter = "m.published_at >= %s" + (" AND m.published_at < %s" if until else "")
+        params = (since, until) if until else (since,)
+        rows = query(f"""
         SELECT
             c.name,
             COUNT(m.id)            AS matinales_count,
@@ -39,7 +53,7 @@ def get_stats(days: int = Query(60, ge=1, le=730)):
             COALESCE(AVG(vs.view_count), 0) AS avg_views,
             COALESCE(SUM(vs.like_count), 0) AS total_likes
         FROM channels c
-        LEFT JOIN matinales m ON m.channel_id = c.id AND m.published_at >= %s
+        LEFT JOIN matinales m ON m.channel_id = c.id AND {date_filter}
         LEFT JOIN view_snapshots vs ON vs.id = (
             SELECT id FROM view_snapshots
             WHERE matinale_id = m.id
@@ -48,7 +62,7 @@ def get_stats(days: int = Query(60, ge=1, le=730)):
         WHERE c.active = 1
         GROUP BY c.name
         ORDER BY total_views DESC
-    """, (since,))
+    """, params)
 
         channels = [
             ChannelStats(
@@ -64,7 +78,7 @@ def get_stats(days: int = Query(60, ge=1, le=730)):
             channels=channels,
             total_matinales=sum(c.matinales_count for c in channels),
             total_views=sum(c.total_views for c in channels),
-            period_days=days,
+            period_days=year * 10000 if year else days,  # encode year as 20250000
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -245,10 +259,15 @@ def search_matinales(
 
 
 @router.get("/schedule")
-def get_schedule(days: int = Query(60, ge=1, le=730)):
+def get_schedule(
+    days: int = Query(60, ge=1, le=730),
+    year: int | None = Query(None, ge=2020, le=2030),
+):
     """Horaires moyens de début/fin par chaîne sur la période."""
-    since = _since(days)
-    rows = query("""
+    since, until = _date_range(days, year)
+    until_clause = "AND m.published_at < %s" if until else ""
+    params = (since, until) if until else (since,)
+    rows = query(f"""
         SELECT
             c.name AS channel,
             AVG(
@@ -268,13 +287,13 @@ def get_schedule(days: int = Query(60, ge=1, le=730)):
             COUNT(m.id) AS episode_count
         FROM matinales m
         JOIN channels c ON c.id = m.channel_id
-        WHERE m.published_at >= %s
+        WHERE m.published_at >= %s {until_clause}
           AND c.active = 1
           AND m.duration_seconds IS NOT NULL
           AND m.duration_seconds > 0
         GROUP BY c.name
         ORDER BY avg_start_min ASC
-    """, (since,))
+    """, params)
 
     result = []
     for r in rows:
@@ -359,9 +378,14 @@ def get_views_evolution(date: str | None = Query(None)):
 
 
 @router.get("/timeline")
-def get_timeline(days: int = Query(60, ge=1, le=730)):
-    since = _since(days)
-    rows = query("""
+def get_timeline(
+    days: int = Query(60, ge=1, le=730),
+    year: int | None = Query(None, ge=2020, le=2030),
+):
+    since, until = _date_range(days, year)
+    until_clause = "AND m.published_at < %s" if until else ""
+    params = (since, until) if until else (since,)
+    rows = query(f"""
         SELECT
             DATE(m.published_at) AS date,
             c.name AS channel,
@@ -373,10 +397,10 @@ def get_timeline(days: int = Query(60, ge=1, le=730)):
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
         )
-        WHERE m.published_at >= %s
+        WHERE m.published_at >= %s {until_clause}
         GROUP BY DATE(m.published_at), c.name
         ORDER BY date ASC
-    """, (since,))
+    """, params)
 
     by_date: dict[str, dict] = defaultdict(dict)
     for r in rows:

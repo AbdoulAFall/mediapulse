@@ -11,21 +11,17 @@ import TimelineChart      from "@/components/TimelineChart";
 import MatinalesTable     from "@/components/MatinalesTable";
 import ScheduleGuide      from "@/components/ScheduleGuide";
 import ViewEvolutionChart from "@/components/ViewEvolutionChart";
+import PeriodSelector, { Period, periodToParams } from "@/components/PeriodSelector";
 
-const PERIODS = [
-  { label: "7 j",   value: 7   },
-  { label: "30 j",  value: 30  },
-  { label: "60 j",  value: 60  },
-  { label: "6 mois",value: 180 },
-  { label: "1 an",  value: 365 },
-  { label: "2 ans", value: 730 },
-];
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const SWR_OPTIONS = {
   dedupingInterval: 5 * 60 * 1000,
   revalidateOnFocus: false,
   errorRetryCount: 2,
 };
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 function today() {
   return new Date().toLocaleDateString("fr-FR", {
@@ -34,17 +30,22 @@ function today() {
 }
 
 export default function Dashboard() {
-  const [days, setDays] = useState(60);
+  const [period, setPeriod] = useState<Period>({ days: 60, year: null });
   const [selectedChannel, setSelectedChannel] = useState<string | undefined>();
 
+  const pq = periodToParams(period);
+
   const { data: stats,     error: statsError,    isLoading: statsLoading }    =
-    useSWR<StatsResponse>(["stats", days], () => fetchStats(days), SWR_OPTIONS);
+    useSWR<StatsResponse>(`${API_URL}/api/stats?${pq}`, fetcher, SWR_OPTIONS);
   const { data: matinales, error: matinalesError, isLoading: matinalesLoading } =
-    useSWR<Matinale[]>(["matinales", days, selectedChannel], () => fetchMatinales(days, selectedChannel), SWR_OPTIONS);
+    useSWR<Matinale[]>(
+      `${API_URL}/api/matinales?${pq}${selectedChannel ? `&channel=${encodeURIComponent(selectedChannel)}` : ""}`,
+      fetcher, SWR_OPTIONS
+    );
   const { data: timeline,  isLoading: timelineLoading } =
-    useSWR<Record<string, number | string>[]>(["timeline", days], () => fetchTimeline(days), SWR_OPTIONS);
+    useSWR<Record<string, number | string>[]>(`${API_URL}/api/timeline?${pq}`, fetcher, SWR_OPTIONS);
   const { data: schedule } =
-    useSWR<ScheduleEntry[]>(["schedule", days], () => fetchSchedule(days), SWR_OPTIONS);
+    useSWR<ScheduleEntry[]>(`${API_URL}/api/schedule?${pq}`, fetcher, SWR_OPTIONS);
 
   // Evolution J0 — refresh toutes les 2 min (données live)
   const todayDate = new Date().toISOString().slice(0, 10);
@@ -101,21 +102,7 @@ export default function Dashboard() {
         <div className="max-w-7xl mx-auto px-6 py-2 flex flex-wrap items-center gap-6">
 
           {/* Période */}
-          <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold uppercase tracking-wider mr-2"
-              style={{ color: "var(--text-muted)" }}>Période</span>
-            {PERIODS.map((p) => (
-              <button key={p.value} onClick={() => setDays(p.value)}
-                className="px-3 py-1 text-xs font-semibold transition-all"
-                style={{
-                  background:   days === p.value ? "var(--accent)" : "transparent",
-                  color:        days === p.value ? "white"         : "var(--text-muted)",
-                  borderRadius: 2,
-                }}>
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <PeriodSelector value={period} onChange={setPeriod} />
 
           {/* Séparateur */}
           {channels.length > 0 && (
