@@ -347,7 +347,7 @@ export default function TimelinePage() {
               <p className="text-xs font-bold uppercase tracking-widest"
                 style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
                 {mode === "cumul" ? "Vues par jour" : "Variation jour / jour"}
-                {" · "}{days} derniers jours
+                {" · "}{period.year ?? `${period.days} derniers jours`}
               </p>
             </div>
             <div className="px-4 py-6">
