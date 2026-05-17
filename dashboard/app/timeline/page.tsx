@@ -132,9 +132,10 @@ export default function TimelinePage() {
     { dedupingInterval: 5 * 60 * 1000, revalidateOnFocus: false }
   );
 
-  // Extrait les chaînes disponibles
+  // Extrait les chaînes disponibles (scan toutes les lignes — certaines chaînes
+  // n'apparaissent que sur des dates ultérieures et seraient manquantes avec data[0])
   const allChannels = data && data.length > 0
-    ? Object.keys(data[0]).filter((k) => k !== "date")
+    ? Array.from(new Set(data.flatMap((row) => Object.keys(row).filter((k) => k !== "date"))))
     : [];
 
   // Init/sync sélection quand les données arrivent ou changent de période
