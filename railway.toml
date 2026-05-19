@@ -5,11 +5,3 @@ builder = "nixpacks"
 startCommand = "uvicorn main:app --app-dir api --host 0.0.0.0 --port ${PORT:-8080}"
 healthcheckPath = "/health"
 healthcheckTimeout = 60
-
-# ── Cron jobs ──────────────────────────────────────────────────────────────
-# Pour activer : créer un service Cron séparé dans Railway pointant
-# sur ce repo, avec la commande correspondante.
-#
-# refresh_today  → python collector/main.py refresh_today
-# refresh_smart  → python collector/main.py refresh_smart
-# report_today   → python collector/main.py report_today

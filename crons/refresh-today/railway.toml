@@ -1,6 +1,0 @@
-[build]
-builder = "nixpacks"
-
-# Snapshots vues toutes les 15 min pendant la matinale (6h–13h UTC, lun–ven)
-[deploy]
-startCommand = "python collector/main.py refresh_today"
