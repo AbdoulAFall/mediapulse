@@ -1,15 +1,13 @@
-name: MediaPulse — Sync manuel (backfill)
+name: MediaPulse — Détection matinales
 
 on:
+  schedule:
+    - cron: '*/30 5-8 * * 1-5'   # Toutes les 30 min, 5h–8h UTC, lun–ven
   workflow_dispatch:
     inputs:
       days:
-        description: 'Nombre de jours à synchroniser (1–730)'
-        default: '60'
-        required: false
-      command:
-        description: 'Commande (sync | detect | refresh | refresh_smart)'
-        default: 'sync'
+        description: 'Fenêtre de détection en jours (défaut : 2)'
+        default: '2'
         required: false
       channel:
         description: 'Chaîne à cibler (ex: "TFM") — vide = toutes'
@@ -17,10 +15,10 @@ on:
         required: false
 
 jobs:
-  sync:
-    name: Sync ${{ github.event.inputs.command || 'sync' }} — ${{ github.event.inputs.days || '60' }}j
+  detect:
+    name: Détecter nouvelles matinales
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -36,17 +34,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r collector/requirements.txt
 
-      - name: Exécuter commande
+      - name: Détecter matinales
         working-directory: collector
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          CMD="${{ github.event.inputs.command || 'sync' }}"
-          DAYS="${{ github.event.inputs.days || '60' }}"
+          DAYS="${{ github.event.inputs.days || '2' }}"
           CHANNEL="${{ github.event.inputs.channel }}"
           if [ -n "$CHANNEL" ]; then
-            python main.py "$CMD" "$DAYS" "$CHANNEL"
+            python main.py detect "$DAYS" "$CHANNEL"
           else
-            python main.py "$CMD" "$DAYS"
+            python main.py detect "$DAYS"
           fi

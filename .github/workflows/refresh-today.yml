@@ -1,0 +1,33 @@
+name: MediaPulse — Snapshots vues J0
+
+on:
+  schedule:
+    - cron: '*/15 6-13 * * 1-5'   # Toutes les 15 min, 6h–13h UTC, lun–ven
+  workflow_dispatch:
+
+jobs:
+  refresh-today:
+    name: Snapshot vues matinales du jour
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: collector/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r collector/requirements.txt
+
+      - name: Snapshot vues J0
+        working-directory: collector
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python main.py refresh_today
