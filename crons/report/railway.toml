@@ -1,0 +1,6 @@
+[build]
+builder = "nixpacks"
+
+# Rapport email quotidien à 13h UTC (lun–ven)
+[deploy]
+startCommand = "python collector/main.py report_today"

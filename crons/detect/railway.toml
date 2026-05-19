@@ -1,0 +1,6 @@
+[build]
+builder = "nixpacks"
+
+# Détection nouvelles matinales toutes les 30 min (5h–7h UTC, lun–ven)
+[deploy]
+startCommand = "python collector/main.py detect 2"
