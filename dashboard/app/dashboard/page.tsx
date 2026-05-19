@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 import KPICards           from "@/components/KPICards";
 import ViewsChart         from "@/components/ViewsChart";
+import ShareChart         from "@/components/ShareChart";
 import TimelineChart      from "@/components/TimelineChart";
 import MatinalesTable     from "@/components/MatinalesTable";
 import ScheduleGuide      from "@/components/ScheduleGuide";
@@ -165,7 +166,7 @@ export default function Dashboard() {
               <div className="skeleton" style={{ height: 300 }} />
             </div>
           : <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {stats    && <ViewsChart channels={stats.channels} />}
+              {stats    && <ShareChart  channels={stats.channels} />}
               {timeline && timeline.length > 0 && <TimelineChart data={timeline} />}
             </div>
         }
