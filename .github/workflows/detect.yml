@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r collector/requirements.txt
 
-      - name: Détecter matinales (live en cours + terminées)
+      - name: Détecter matinales terminées (playlist)
         working-directory: collector
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
@@ -42,11 +42,6 @@ jobs:
         run: |
           DAYS="${{ github.event.inputs.days || '1' }}"
           CHANNEL="${{ github.event.inputs.channel }}"
-
-          # 1. Lives en cours — search.list avec filtre fenêtre horaire (évite doublons quota)
-          python main.py detect_live
-
-          # 2. Replays terminés — playlistItems.list (vidéos visibles après fin du live)
           if [ -n "$CHANNEL" ]; then
             python main.py detect "$DAYS" "$CHANNEL"
           else

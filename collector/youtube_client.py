@@ -179,17 +179,24 @@ def fetch_live_details(video_ids: list[str]) -> list[dict]:
 
 
 def fetch_video_stats(video_ids: list[str]) -> dict[str, dict]:
-    """Retourne {video_id: {view_count, like_count, comment_count}}."""
+    """
+    Retourne {video_id: {view_count, like_count, comment_count, concurrent_viewers}}.
+    concurrent_viewers est renseigné uniquement si la vidéo est en live au moment de l'appel.
+    Coût : 1 unité (videos.list — liveStreamingDetails n'ajoute pas de coût supplémentaire).
+    """
     result = {}
     for i in range(0, len(video_ids), 50):
         batch = video_ids[i:i + 50]
-        data = _get("videos", id=",".join(batch), part="statistics")
+        data = _get("videos", id=",".join(batch), part="statistics,liveStreamingDetails")
         for item in data.get("items", []):
-            s = item.get("statistics", {})
+            s    = item.get("statistics", {})
+            live = item.get("liveStreamingDetails", {})
+            cv   = live.get("concurrentViewers")
             result[item["id"]] = {
-                "view_count": int(s.get("viewCount", 0)),
-                "like_count": int(s.get("likeCount", 0)),
-                "comment_count": int(s.get("commentCount", 0)),
+                "view_count":         int(s.get("viewCount",    0)),
+                "like_count":         int(s.get("likeCount",    0)),
+                "comment_count":      int(s.get("commentCount", 0)),
+                "concurrent_viewers": int(cv) if cv else None,
             }
     return result
 

@@ -2,10 +2,13 @@ name: MediaPulse — Détection lives en cours
 
 on:
   schedule:
-    - cron: '*/15 6-10 * * 1-5'  # Toutes les 15 min, 6h–10h UTC, lun–ven
+    - cron: '*/30 6-10 * * 1-5'  # Toutes les 30 min, 6h–10h UTC, lun–ven
   workflow_dispatch:
 
-# Quota : filtre horaire actif → ~5 chaînes/run × 100u = ~500u/run × 16 runs = ~8 000u/jour
+# Rôle : DÉCOUVERTE uniquement (trouver le video ID d'une matinale en live).
+# Le suivi des concurrentViewers toutes les 15 min est assuré par refresh-today.yml
+# via videos.list (1u/appel), sans search.list supplémentaire.
+# Quota : filtre horaire → ~5 chaînes/run × 100u × 8 runs = ~4 000u/jour
 
 jobs:
   detect-live:
