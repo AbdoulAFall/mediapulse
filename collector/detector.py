@@ -153,6 +153,78 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
     return total_new
 
 
+def detect_live_matinales(channels: list[dict]) -> int:
+    """
+    Détecte les matinales actuellement en live via search.list (eventType=live).
+    Coût : 100 unités × nombre de chaînes actives.
+
+    Pour chaque chaîne :
+      1. search.list → vidéos en live en ce moment
+      2. videos.list → récupère actualStartTime + concurrentViewers
+      3. Insère la matinale si pas déjà en base (published_at = actualStartTime)
+      4. Snapshot le nombre de spectateurs simultanés
+    """
+    total_new = 0
+
+    for ch in channels:
+        print(f"  → {ch['name']} (recherche live en cours)...", end=" ", flush=True)
+        try:
+            live_items = yt.search_live_videos(ch["channel_id"])
+            if not live_items:
+                print("aucun live.")
+                continue
+
+            video_ids = [v["video_id"] for v in live_items]
+            details   = yt.fetch_live_details(video_ids)
+
+            found = 0
+            for vid in details:
+                start_time = vid["actualStartTime"] or vid["scheduledStartTime"]
+                if not start_time:
+                    continue
+
+                if not yt._is_in_matinale_window(start_time):
+                    continue
+
+                day = start_time[:10]
+                skip, reason = _skip_day(day)
+                if skip:
+                    continue
+
+                hints = ch.get("title_hints", [])
+                if hints and not _matches_hints(vid["title"], hints):
+                    continue
+
+                video_data = {
+                    "youtube_video_id": vid["id"],
+                    "title":            vid["title"],
+                    "published_at":     start_time,
+                    "duration_seconds": None,
+                }
+                matinale_id = storage.insert_matinale(ch["db_id"], video_data)
+                if matinale_id:
+                    total_new += 1
+                    found += 1
+                else:
+                    matinale_id = storage.get_matinale_id_by_video_id(vid["id"])
+
+                if matinale_id and vid.get("concurrentViewers"):
+                    storage.insert_snapshot(matinale_id, {
+                        "concurrent_viewers": int(vid["concurrentViewers"]),
+                    })
+
+            viewers_info = ", ".join(
+                f"{v['title'][:30]}… ({v.get('concurrentViewers','?')} viewers)"
+                for v in details if v.get("concurrentViewers")
+            )
+            print(f"{found} nouveau(x) | {viewers_info or 'pas de viewers'}")
+
+        except Exception as e:
+            print(f"ERREUR : {e}")
+
+    return total_new
+
+
 def refresh_view_counts(days: int = DEFAULT_LOOKBACK_DAYS):
     """Snapshot des vues pour les matinales des N derniers jours non mises à jour depuis 6h."""
     rows = storage.get_matinale_ids_last_n_days(days)

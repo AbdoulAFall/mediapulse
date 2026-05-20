@@ -131,6 +131,53 @@ def fetch_recent_videos(playlist_id: str, since: datetime) -> Iterator[dict]:
             break
 
 
+def search_live_videos(channel_id: str) -> list[dict]:
+    """
+    Retourne les vidéos actuellement en live pour une chaîne.
+    Coût : 100 unités (search.list).
+    """
+    data = _get(
+        "search",
+        channelId=channel_id,
+        type="video",
+        eventType="live",
+        part="snippet",
+        maxResults=5,
+    )
+    return [
+        {
+            "video_id": item["id"]["videoId"],
+            "title":    item["snippet"]["title"],
+        }
+        for item in data.get("items", [])
+    ]
+
+
+def fetch_live_details(video_ids: list[str]) -> list[dict]:
+    """
+    Retourne snippet + liveStreamingDetails pour les vidéos données.
+    Coût : 1 unité (videos.list).
+    """
+    if not video_ids:
+        return []
+    data = _get(
+        "videos",
+        id=",".join(video_ids),
+        part="snippet,liveStreamingDetails",
+    )
+    result = []
+    for v in data.get("items", []):
+        live = v.get("liveStreamingDetails", {})
+        result.append({
+            "id":                  v["id"],
+            "title":               v["snippet"]["title"],
+            "actualStartTime":     live.get("actualStartTime"),
+            "scheduledStartTime":  live.get("scheduledStartTime"),
+            "concurrentViewers":   live.get("concurrentViewers"),
+        })
+    return result
+
+
 def fetch_video_stats(video_ids: list[str]) -> dict[str, dict]:
     """Retourne {video_id: {view_count, like_count, comment_count}}."""
     result = {}

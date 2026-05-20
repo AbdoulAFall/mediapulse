@@ -15,6 +15,8 @@ Commandes :
   python main.py stats                   — Rapport des 60 derniers jours
   python main.py stats 730               — Rapport sur 2 ans
 
+  python main.py detect_live             — Détecte les matinales actuellement en live
+                                             + snapshot concurrentViewers (coût: 100u/chaîne)
   python main.py report_today            — Envoie le rapport email des vues J0 (via Resend)
                                              Variables requises : RESEND_API_KEY, REPORT_EMAILS
 
@@ -140,6 +142,17 @@ def cmd_stats(days: int = DEFAULT_DAYS, channel_filter: str | None = None):
     report.print_stats(days)
 
 
+def cmd_detect_live(_days: int = DEFAULT_DAYS, channel_filter: str | None = None):
+    """Détecte les lives en cours + snapshot concurrentViewers."""
+    storage.init_db()
+    print("\n[1/2] Résolution des chaînes...")
+    channels = detector.sync_channels()
+    channels = _filter_channels(channels, channel_filter)
+    print(f"\n[2/2] Détection des lives en cours ({len(channels)} chaîne(s))...")
+    new = detector.detect_live_matinales(channels)
+    print(f"\n✓ {new} nouvelle(s) matinale(s) détectée(s) en live.\n")
+
+
 def cmd_report_today(_days: int = DEFAULT_DAYS, _channel_filter: str | None = None):
     """Envoie le rapport email des vues J0 via Resend."""
     storage.init_db()
@@ -166,6 +179,7 @@ COMMANDS = {
     "refresh":       cmd_refresh,
     "refresh_smart": cmd_refresh_smart,
     "refresh_today": cmd_refresh_today,
+    "detect_live":   cmd_detect_live,
     "stats":         cmd_stats,
     "report_today":  cmd_report_today,
 }

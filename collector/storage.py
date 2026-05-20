@@ -73,6 +73,11 @@ def init_db():
             cur.execute("CREATE INDEX IF NOT EXISTS idx_matinales_channel ON matinales(channel_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_matinales_published ON matinales(published_at);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_snapshots_matinale ON view_snapshots(matinale_id);")
+            # Migration : colonne concurrent_viewers (vues simultanées live)
+            cur.execute("""
+                ALTER TABLE view_snapshots
+                ADD COLUMN IF NOT EXISTS concurrent_viewers INTEGER
+            """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_matinale ON reports(matinale_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status);")
             cur.execute("""
@@ -103,16 +108,38 @@ def upsert_channel(name: str, handle: str | None, channel_id: str, playlist_id: 
         return row["id"]
 
 
+def get_matinale_id_by_video_id(youtube_video_id: str) -> int | None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM matinales WHERE youtube_video_id = %s",
+                (youtube_video_id,)
+            )
+            row = cur.fetchone()
+            return row["id"] if row else None
+
+
 def insert_matinale(channel_db_id: int, video: dict) -> int | None:
-    """Retourne l'id inséré, ou None si déjà existant (même vidéo ou même chaîne/jour)."""
+    """
+    Retourne l'id inséré, ou None si déjà existant (même vidéo ou même chaîne/jour).
+    Si la vidéo existe déjà sans durée (détectée en live), met à jour la durée.
+    """
     with get_conn() as conn:
         with conn.cursor() as cur:
             # 1. Doublon exact (même video_id)
             cur.execute(
-                "SELECT id FROM matinales WHERE youtube_video_id = %s",
+                "SELECT id, duration_seconds FROM matinales WHERE youtube_video_id = %s",
                 (video["youtube_video_id"],)
             )
-            if cur.fetchone():
+            existing = cur.fetchone()
+            if existing:
+                # Live terminé → on renseigne la durée si elle était inconnue
+                if video.get("duration_seconds") and not existing["duration_seconds"]:
+                    cur.execute(
+                        "UPDATE matinales SET duration_seconds = %s WHERE id = %s",
+                        (video["duration_seconds"], existing["id"])
+                    )
+                    conn.commit()
                 return None
 
             # 2. Une matinale existe déjà pour cette chaîne ce jour-là
@@ -144,13 +171,15 @@ def insert_snapshot(matinale_db_id: int, stats: dict):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO view_snapshots (matinale_id, view_count, like_count, comment_count)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO view_snapshots
+                    (matinale_id, view_count, like_count, comment_count, concurrent_viewers)
+                VALUES (%s, %s, %s, %s, %s)
             """, (
                 matinale_db_id,
                 stats.get("view_count"),
                 stats.get("like_count"),
                 stats.get("comment_count"),
+                stats.get("concurrent_viewers"),
             ))
         conn.commit()
 
