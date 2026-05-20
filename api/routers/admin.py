@@ -367,7 +367,7 @@ def delete_subscriber(sub_id: int, x_admin_token: str = Header(default="")):
 # ── Admin : Envoi manuel du rapport email ─────────────────────────────────────
 
 RESEND_API_KEY  = os.environ.get("RESEND_API_KEY", "")
-FROM_EMAIL      = os.environ.get("REPORT_FROM_EMAIL", "MediaPulse <rapports@mediapulse.sn>")
+FROM_EMAIL      = os.environ.get("REPORT_FROM_EMAIL", "MediaPulse <onboarding@resend.dev>")
 DASHBOARD_URL   = os.environ.get("DASHBOARD_URL", "https://mediapulse.vercel.app")
 
 CHANNEL_COLORS = {
