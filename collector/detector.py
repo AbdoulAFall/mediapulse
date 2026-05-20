@@ -156,17 +156,37 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
 def detect_live_matinales(channels: list[dict]) -> int:
     """
     Détecte les matinales actuellement en live via search.list (eventType=live).
-    Coût : 100 unités × nombre de chaînes actives.
+    Coût : 100 unités × chaînes dont la fenêtre matinale est active maintenant.
 
-    Pour chaque chaîne :
+    Filtre horaire : on n'appelle search.list que pour les chaînes dont la plage
+    matinale (± 30 min de tolérance) couvre l'heure actuelle UTC.
+    En pratique : 4–6 chaînes au lieu de 10 → quota maîtrisé.
+
+    Pour chaque chaîne éligible :
       1. search.list → vidéos en live en ce moment
       2. videos.list → récupère actualStartTime + concurrentViewers
       3. Insère la matinale si pas déjà en base (published_at = actualStartTime)
       4. Snapshot le nombre de spectateurs simultanés
     """
+    now_utc = datetime.now(timezone.utc)
+    now_min = now_utc.hour * 60 + now_utc.minute
+
+    # Filtre : uniquement les chaînes en fenêtre matinale à cet instant
+    active = []
+    for ch in channels:
+        sh, sm = map(int, ch["matinale_start"].split(":"))
+        eh, em = map(int, ch["matinale_end"].split(":"))
+        if (sh * 60 + sm - 30) <= now_min <= (eh * 60 + em + 30):
+            active.append(ch)
+
+    if not active:
+        print("  Aucune chaîne en fenêtre matinale actuellement — aucun appel search.list.")
+        return 0
+
+    print(f"  {len(active)} chaîne(s) en fenêtre active : {', '.join(c['name'] for c in active)}")
     total_new = 0
 
-    for ch in channels:
+    for ch in active:
         print(f"  → {ch['name']} (recherche live en cours)...", end=" ", flush=True)
         try:
             live_items = yt.search_live_videos(ch["channel_id"])
