@@ -2,7 +2,7 @@ name: MediaPulse — Détection matinales
 
 on:
   schedule:
-    - cron: '*/15 5-10 * * 1-5'  # Toutes les 15 min, 5h–10h UTC, lun–ven
+    - cron: '*/15 5-13 * * 1-5'  # Toutes les 15 min, 5h–13h UTC, lun–ven
   workflow_dispatch:
     inputs:
       days:
