@@ -13,7 +13,8 @@ def get_pool():
         if "sslmode" not in url:
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}sslmode=require"
-        _pool = pool.SimpleConnectionPool(
+        # ThreadedConnectionPool : thread-safe (FastAPI exécute les routes sync en thread pool)
+        _pool = pool.ThreadedConnectionPool(
             1, 10,
             dsn=url,
             cursor_factory=psycopg2.extras.RealDictCursor,
@@ -29,6 +30,9 @@ def query(sql: str, params=()) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(sql, params or None)
             return [dict(r) for r in cur.fetchall()]
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         p.putconn(conn)
 
@@ -40,5 +44,8 @@ def execute(sql: str, params=()):
         with conn.cursor() as cur:
             cur.execute(sql, params or None)
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         p.putconn(conn)

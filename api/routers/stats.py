@@ -110,7 +110,7 @@ def get_matinales(
             vs.view_count,
             vs.like_count
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id
+        JOIN channels c ON c.id = m.channel_id AND c.active = 1
         LEFT JOIN view_snapshots vs ON vs.id = (
             SELECT id FROM view_snapshots
             WHERE matinale_id = m.id
@@ -339,9 +339,10 @@ def get_views_evolution(date: str | None = Query(None)):
             vs.snapshot_at,
             vs.view_count,
             vs.like_count,
-            vs.comment_count
+            vs.comment_count,
+            vs.concurrent_viewers
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id
+        JOIN channels c ON c.id = m.channel_id AND c.active = 1
         JOIN view_snapshots vs ON vs.matinale_id = m.id
         WHERE DATE(m.published_at AT TIME ZONE 'UTC') = %s::date
         ORDER BY m.id, vs.snapshot_at ASC
@@ -367,11 +368,12 @@ def get_views_evolution(date: str | None = Query(None)):
         if snap_at.tzinfo is None:
             snap_at = snap_at.replace(tzinfo=timezone.utc)
         by_matinale[mid]["snapshots"].append({
-            "time":          snap_at.strftime("%H:%M"),
-            "snapshot_at":   snap_at.isoformat(),
-            "view_count":    r["view_count"],
-            "like_count":    r["like_count"],
-            "comment_count": r["comment_count"],
+            "time":               snap_at.strftime("%H:%M"),
+            "snapshot_at":        snap_at.isoformat(),
+            "view_count":         r["view_count"],
+            "like_count":         r["like_count"],
+            "comment_count":      r["comment_count"],
+            "concurrent_viewers": r["concurrent_viewers"],
         })
 
     return list(by_matinale.values())
@@ -391,7 +393,7 @@ def get_timeline(
             c.name AS channel,
             COALESCE(SUM(vs.view_count), 0) AS views
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id
+        JOIN channels c ON c.id = m.channel_id AND c.active = 1
         LEFT JOIN view_snapshots vs ON vs.id = (
             SELECT id FROM view_snapshots
             WHERE matinale_id = m.id
