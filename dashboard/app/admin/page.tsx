@@ -49,7 +49,7 @@ interface Subscriber {
   created_at: string;
 }
 
-type Tab = "reports" | "matinales" | "excluded" | "subscribers";
+type Tab = "reports" | "matinales" | "excluded" | "subscribers" | "tools" | "rules";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -785,6 +785,309 @@ function SubscribersTab({ token }: { token: string }) {
   );
 }
 
+// ── Onglet Outils ──────────────────────────────────────────────────────────
+
+const CHANNELS_LIST = ["TFM", "RTS", "2STV", "Sen TV", "Walf TV"];
+
+function ToolsTab({ token }: { token: string }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [detectDate, setDetectDate]       = useState(today);
+  const [detectChannel, setDetectChannel] = useState("");
+  const [detectStatus, setDetectStatus]   = useState<"idle"|"loading"|"ok"|"err">("idle");
+  const [detectMsg, setDetectMsg]         = useState("");
+
+  async function doDetect(e: React.FormEvent) {
+    e.preventDefault();
+    setDetectStatus("loading"); setDetectMsg("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/detect`, {
+        method:  "POST",
+        headers: authHeaders(token),
+        body:    JSON.stringify({ date: detectDate, channel: detectChannel || null }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail);
+      setDetectStatus("ok");
+      setDetectMsg(`✓ ${data.message} — workflow GitHub Actions lancé.`);
+    } catch (e: unknown) {
+      setDetectStatus("err");
+      setDetectMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {/* Détection par date */}
+      <div style={{ border: "1px solid var(--border)", padding: "20px 24px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Lancer une détection manuelle
+        </p>
+        <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
+          Déclenche le workflow GitHub Actions <code style={{ background: "var(--surface2)", padding: "1px 5px", fontSize: 11 }}>detect.yml</code> pour une date précise. Utile pour rattraper un jour manqué ou forcer une re-détection.
+        </p>
+
+        <form onSubmit={doDetect} className="flex flex-wrap items-end gap-4">
+          {/* Date cible */}
+          <div>
+            <label className="text-xs font-bold block mb-1.5" style={{ color: "var(--text-muted)" }}>
+              Date cible *
+            </label>
+            <input
+              type="date"
+              value={detectDate}
+              max={today}
+              onChange={(e) => { setDetectDate(e.target.value); setDetectStatus("idle"); setDetectMsg(""); }}
+              required
+              className="text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+
+          {/* Filtre chaîne (optionnel) */}
+          <div>
+            <label className="text-xs font-bold block mb-1.5" style={{ color: "var(--text-muted)" }}>
+              Chaîne (optionnel — toutes si vide)
+            </label>
+            <select
+              value={detectChannel}
+              onChange={(e) => setDetectChannel(e.target.value)}
+              className="text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit", minWidth: 180 }}
+            >
+              <option value="">— Toutes les chaînes —</option>
+              {CHANNELS_LIST.map((ch) => (
+                <option key={ch} value={ch}>{ch}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Bouton */}
+          <button
+            type="submit"
+            disabled={detectStatus === "loading"}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-opacity hover:opacity-80"
+            style={{ background: "var(--ink)", color: "white" }}>
+            {detectStatus === "loading" ? "Lancement…" : "▶ Lancer"}
+          </button>
+        </form>
+
+        {/* Feedback */}
+        {detectMsg && (
+          <p className="text-xs mt-4 px-1" style={{ color: detectStatus === "ok" ? "#2e7d32" : "var(--accent)" }}>
+            {detectMsg}
+          </p>
+        )}
+      </div>
+
+      {/* Info configuration requise */}
+      <div style={{ border: "1px solid var(--border)", padding: "16px 20px", background: "var(--surface2)" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Prérequis côté Railway
+        </p>
+        <div className="flex flex-col gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+          <p>
+            <span className="font-mono font-bold" style={{ color: "var(--ink)" }}>GITHUB_TOKEN</span>
+            {" "}— PAT GitHub avec le scope <code style={{ background: "var(--surface)", padding: "1px 5px" }}>workflow</code>
+          </p>
+          <p>
+            <span className="font-mono font-bold" style={{ color: "var(--ink)" }}>GITHUB_REPO</span>
+            {" "}— ex: <code style={{ background: "var(--surface)", padding: "1px 5px" }}>AbdoulAFall/mediapulse</code>
+          </p>
+          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)", opacity: 0.7 }}>
+            Le PAT doit être créé sur <strong>github.com → Settings → Developer settings → Personal access tokens (Fine-grained)</strong>, avec accès en lecture/écriture sur les Actions du dépôt.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Onglet Règles & Crons ──────────────────────────────────────────────────
+
+const CRONS = [
+  {
+    workflow: "detect.yml",
+    label: "Détection matinales",
+    schedule: "Toutes les 30 min",
+    hours: "5h00 – 13h00 UTC",
+    days: "Lun – Ven",
+    command: "python main.py detect 1",
+    description: "Scanne la playlist YouTube de chaque chaîne et insère les nouveaux lives détectés.",
+  },
+  {
+    workflow: "refresh-today.yml",
+    label: "Refresh vues J0",
+    schedule: "Toutes les 15 min",
+    hours: "6h00 – 13h00 UTC",
+    days: "Lun – Ven",
+    command: "python main.py refresh_today",
+    description: "Met à jour le compteur de vues des matinales d'aujourd'hui en temps quasi-réel.",
+  },
+  {
+    workflow: "refresh-smart.yml",
+    label: "Refresh vues (smart)",
+    schedule: "Toutes les 30 min",
+    hours: "5h00 – 13h00 UTC",
+    days: "Lun – Ven",
+    command: "python main.py refresh_smart",
+    description: "J0–J3 : refresh si > 6h · J4–J30 : refresh si > 24h · J31+ : ignoré.",
+  },
+  {
+    workflow: "report.yml",
+    label: "Rapport email quotidien",
+    schedule: "1 fois / jour",
+    hours: "13h00 UTC",
+    days: "Lun – Ven",
+    command: "python main.py report_today",
+    description: "Envoie le rapport de vues du jour à tous les abonnés actifs via Resend.",
+  },
+  {
+    workflow: "sync.yml",
+    label: "Sync historique",
+    schedule: "Manuel uniquement",
+    hours: "—",
+    days: "—",
+    command: "python main.py sync N",
+    description: "Resynchronise les N derniers jours pour toutes les chaînes (ou une seule). Déclenché depuis GitHub Actions ou l'onglet Outils.",
+  },
+];
+
+const CHANNEL_RULES = [
+  { name: "TFM",            start: "07:00", end: "11:00", hints: ["infos matin"] },
+  { name: "RTS",            start: "07:30", end: "11:00", hints: ["kenkelibaa", "kenkeliba"] },
+  { name: "2STV",           start: "07:00", end: "10:30", hints: ["matin bonheur"] },
+  { name: "Sen TV",         start: "07:30", end: "11:00", hints: ["bloc matinale", "bloc matin"] },
+  { name: "Walf TV",        start: "07:00", end: "10:30", hints: ["votre matinale", "r'eveil", "réveil", "reveil"] },
+  { name: "Solo Media Group", start: "07:30", end: "11:00", hints: ["la matinale d'infos", "matinale d'infos", "matinale infos"] },
+  { name: "Xalaat TV",      start: "07:00", end: "11:00", hints: ["lu xew tay"] },
+  { name: "Solution TV",    start: "07:00", end: "11:00", hints: [] },
+  { name: "Sans Limites TV", start: "07:30", end: "11:00", hints: ["café actu", "cafe actu"] },
+  { name: "Seneweb TV",     start: "08:00", end: "12:00", hints: ["matinale.sn", "matinale sn"] },
+];
+
+function RulesTab() {
+  return (
+    <div className="flex flex-col gap-8">
+
+      {/* Crons GitHub Actions */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest mb-4"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Planification — GitHub Actions
+        </p>
+        <div className="flex flex-col gap-3">
+          {CRONS.map((c) => (
+            <div key={c.workflow} style={{ border: "1px solid var(--border)", padding: "14px 18px" }}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold px-2 py-0.5"
+                      style={{ background: c.schedule === "Manuel uniquement" ? "var(--surface2)" : "var(--ink)", color: c.schedule === "Manuel uniquement" ? "var(--text-muted)" : "white" }}>
+                      {c.schedule}
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: "var(--ink)" }}>{c.label}</span>
+                  </div>
+                  <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>{c.description}</p>
+                  <code className="text-xs px-2 py-0.5" style={{ background: "var(--surface2)", color: "var(--ink)", fontFamily: "monospace" }}>
+                    {c.command}
+                  </code>
+                </div>
+                <div className="flex flex-col gap-1 text-right flex-shrink-0">
+                  <span className="text-xs font-semibold" style={{ color: "var(--ink)" }}>{c.hours}</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{c.days}</span>
+                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)", opacity: 0.6 }}>{c.workflow}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Règles de détection par chaîne */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest mb-2"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Règles de détection par chaîne
+        </p>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Tolérance ±30 min appliquée automatiquement sur chaque fenêtre horaire. Semaines uniquement (sam/dim ignorés), jours fériés sénégalais exclus.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)" }}>
+                {["Chaîne", "Fenêtre horaire UTC", "Filtre titre (title_hints)", "Mode si aucun hint"].map((h) => (
+                  <th key={h} className="px-3 py-2 text-left font-bold uppercase tracking-wider"
+                    style={{ color: "var(--text-muted)", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {CHANNEL_RULES.map((ch, i) => (
+                <tr key={ch.name} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)" }}>
+                  <td className="px-3 py-2 font-bold whitespace-nowrap" style={{ color: "var(--ink)" }}>
+                    {ch.name}
+                  </td>
+                  <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                    {ch.start} – {ch.end}
+                    <span className="ml-1 text-xs" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
+                      (± 30 min)
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {ch.hints.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {ch.hints.map((h) => (
+                          <span key={h} className="px-1.5 py-0.5 font-mono"
+                            style={{ background: "var(--ink)", color: "white", fontSize: 10 }}>
+                            {h}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-xs" style={{ color: ch.hints.length === 0 ? "#2e7d32" : "var(--text-muted)", fontStyle: ch.hints.length === 0 ? "normal" : "italic" }}>
+                    {ch.hints.length === 0 ? "✓ Fenêtre horaire uniquement" : "N/A (hint actif)"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Règles générales */}
+      <div style={{ border: "1px solid var(--border)", padding: "16px 20px", background: "var(--surface2)" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-3"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Filtres communs à toutes les chaînes
+        </p>
+        <div className="flex flex-col gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+          {[
+            ["Type de contenu", "Uniquement les lives terminés (liveStreamingDetails présent)"],
+            ["Durée minimale", "≥ 20 minutes — élimine les courts clips et bandes-annonces"],
+            ["Jours ignorés", "Samedis, dimanches, jours fériés sénégalais, jours exclus manuellement"],
+            ["Doublon", "1 seule matinale par chaîne par jour — la première détectée est conservée"],
+            ["Fenêtre globale", "4h00 – 13h00 UTC (filtre large avant le filtre par chaîne)"],
+          ].map(([label, value]) => (
+            <div key={label} className="flex gap-3">
+              <span className="font-bold flex-shrink-0" style={{ color: "var(--ink)", minWidth: 140 }}>{label}</span>
+              <span>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ── Page principale ────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -849,6 +1152,8 @@ export default function AdminPage() {
     { key: "matinales",   label: "Matinales"                        },
     { key: "excluded",    label: "Jours exclus"                     },
     { key: "subscribers", label: "Abonnés email"                    },
+    { key: "tools",       label: "Outils"                           },
+    { key: "rules",       label: "Règles & Crons"                   },
   ];
 
   // ── Écran de connexion ────────────────────────────────────────────────
@@ -948,6 +1253,8 @@ export default function AdminPage() {
         {tab === "matinales"   && <MatinalesTab    token={token} />}
         {tab === "excluded"    && <ExcludedDaysTab token={token} />}
         {tab === "subscribers" && <SubscribersTab  token={token} />}
+        {tab === "tools"       && <ToolsTab        token={token} />}
+        {tab === "rules"       && <RulesTab                      />}
       </main>
     </div>
   );

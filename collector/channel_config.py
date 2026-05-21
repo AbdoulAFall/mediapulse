@@ -19,7 +19,7 @@ CHANNELS = [
         "active": True,
         "matinale_start": "07:30",
         "matinale_end":   "11:00",
-        "title_hints": ["kenkelibaa"],
+        "title_hints": ["kenkelibaa", "kenkeliba"],
     },
     {
         "name": "2STV",
