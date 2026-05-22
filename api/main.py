@@ -16,6 +16,11 @@ RESEND_KEY    = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL    = os.environ.get("REPORT_FROM_EMAIL", "MediaPulse <onboarding@resend.dev>")
 DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "https://mediapulse.vercel.app")
 
+# Vérifie les variables critiques au démarrage
+_db_url = os.environ.get("DATABASE_URL", "")
+print(f"[config] DATABASE_URL {'définie' if _db_url else 'MANQUANTE !'}", flush=True)
+print(f"[config] YOUTUBE_API_KEY {'définie' if YT_KEY else 'absente'}", flush=True)
+
 # Plage horaire (UTC) — 5h–14h lun–ven
 _REFRESH_START_H    = 5
 _REFRESH_END_H      = 14
@@ -333,7 +338,12 @@ async def _report_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _init_tables()
+    print("[startup] Démarrage MediaPulse API...", flush=True)
+    try:
+        _init_tables()
+        print("[startup] Tables OK", flush=True)
+    except Exception as e:
+        print(f"[startup] _init_tables erreur (non bloquante) : {e}", flush=True)
     tasks = [
         asyncio.create_task(_refresh_today_loop()),
         asyncio.create_task(_refresh_smart_loop()),
