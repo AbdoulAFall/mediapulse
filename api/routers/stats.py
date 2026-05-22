@@ -60,7 +60,7 @@ def get_stats(
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
         ) vs ON m.id IS NOT NULL
-        WHERE c.active = 1
+        WHERE c.active = true
         GROUP BY c.name
         ORDER BY total_views DESC
     """, params)
@@ -116,7 +116,7 @@ def get_matinales(
             vs.view_count,
             vs.like_count
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id AND c.active = 1
+        JOIN channels c ON c.id = m.channel_id AND c.active = true
         LEFT JOIN LATERAL (
             SELECT view_count, like_count
             FROM view_snapshots
@@ -164,7 +164,7 @@ def search_matinales(
     page_size:    int        = Query(50, ge=1, le=200),
 ):
     """Recherche paginée avec filtres avancés."""
-    filters: list[str] = ["c.active = 1"]
+    filters: list[str] = ["c.active = true"]
     params:  list      = []
 
     if search:
@@ -295,7 +295,7 @@ def get_schedule(
         FROM matinales m
         JOIN channels c ON c.id = m.channel_id
         WHERE m.published_at >= %s {until_clause}
-          AND c.active = 1
+          AND c.active = true
           AND m.duration_seconds IS NOT NULL
           AND m.duration_seconds > 0
         GROUP BY c.name
@@ -346,14 +346,14 @@ def get_views_evolution(date: str | None = Query(None)):
             vs.snapshot_at,
             vs.view_count,
             vs.like_count,
-            vs.comment_count,
-            vs.concurrent_viewers
+            vs.comment_count
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id AND c.active = 1
+        JOIN channels c ON c.id = m.channel_id AND c.active = true
         JOIN view_snapshots vs ON vs.matinale_id = m.id
-        WHERE DATE(m.published_at AT TIME ZONE 'UTC') = %s::date
+        WHERE m.published_at >= %s::date
+          AND m.published_at <  %s::date + INTERVAL '1 day'
         ORDER BY m.id, vs.snapshot_at ASC
-    """, (date,))
+    """, (date, date))
 
     # Groupe par matinale
     by_matinale: dict[int, dict] = {}
@@ -375,12 +375,11 @@ def get_views_evolution(date: str | None = Query(None)):
         if snap_at.tzinfo is None:
             snap_at = snap_at.replace(tzinfo=timezone.utc)
         by_matinale[mid]["snapshots"].append({
-            "time":               snap_at.strftime("%H:%M"),
-            "snapshot_at":        snap_at.isoformat(),
-            "view_count":         r["view_count"],
-            "like_count":         r["like_count"],
-            "comment_count":      r["comment_count"],
-            "concurrent_viewers": r["concurrent_viewers"],
+            "time":          snap_at.strftime("%H:%M"),
+            "snapshot_at":   snap_at.isoformat(),
+            "view_count":    r["view_count"],
+            "like_count":    r["like_count"],
+            "comment_count": r["comment_count"],
         })
 
     return list(by_matinale.values())
@@ -400,7 +399,7 @@ def get_timeline(
             c.name AS channel,
             COALESCE(SUM(vs.view_count), 0) AS views
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id AND c.active = 1
+        JOIN channels c ON c.id = m.channel_id AND c.active = true
         LEFT JOIN LATERAL (
             SELECT view_count
             FROM view_snapshots
