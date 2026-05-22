@@ -54,11 +54,12 @@ def get_stats(
             COALESCE(SUM(vs.like_count), 0) AS total_likes
         FROM channels c
         LEFT JOIN matinales m ON m.channel_id = c.id AND {date_filter}
-        LEFT JOIN view_snapshots vs ON vs.id = (
-            SELECT id FROM view_snapshots
+        LEFT JOIN LATERAL (
+            SELECT view_count, like_count
+            FROM view_snapshots
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
-        )
+        ) vs ON m.id IS NOT NULL
         WHERE c.active = 1
         GROUP BY c.name
         ORDER BY total_views DESC
@@ -87,12 +88,17 @@ def get_stats(
 @router.get("/matinales", response_model=list[Matinale])
 def get_matinales(
     days: int = Query(60, ge=1, le=730),
+    year: int | None = Query(None, ge=2020, le=2030),
     channel: str | None = Query(None),
     limit: int = Query(200, ge=1, le=1000),
 ):
-    since = _since(days)
+    since, until = _date_range(days, year)
     filters = ["m.published_at >= %s"]
     params: list = [since]
+
+    if until:
+        filters.append("m.published_at < %s")
+        params.append(until)
 
     if channel:
         filters.append("c.name = %s")
@@ -111,11 +117,12 @@ def get_matinales(
             vs.like_count
         FROM matinales m
         JOIN channels c ON c.id = m.channel_id AND c.active = 1
-        LEFT JOIN view_snapshots vs ON vs.id = (
-            SELECT id FROM view_snapshots
+        LEFT JOIN LATERAL (
+            SELECT view_count, like_count
+            FROM view_snapshots
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
-        )
+        ) vs ON true
         WHERE {where}
         ORDER BY m.published_at DESC
         LIMIT %s
@@ -394,11 +401,12 @@ def get_timeline(
             COALESCE(SUM(vs.view_count), 0) AS views
         FROM matinales m
         JOIN channels c ON c.id = m.channel_id AND c.active = 1
-        LEFT JOIN view_snapshots vs ON vs.id = (
-            SELECT id FROM view_snapshots
+        LEFT JOIN LATERAL (
+            SELECT view_count
+            FROM view_snapshots
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
-        )
+        ) vs ON true
         WHERE m.published_at >= %s {until_clause}
         GROUP BY DATE(m.published_at), c.name
         ORDER BY date ASC
