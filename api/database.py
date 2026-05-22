@@ -17,7 +17,7 @@ def get_pool():
             1, 10,
             dsn=url,
             cursor_factory=psycopg2.extras.RealDictCursor,
-            connect_timeout=10,
+            connect_timeout=5,
             # Annule toute requête qui pend > 30 s (Supabase lent / réseau)
             options="-c statement_timeout=30000",
         )
