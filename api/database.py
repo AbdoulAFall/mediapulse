@@ -1,7 +1,7 @@
 import os
 import psycopg2
 import psycopg2.extras
-from psycopg2 import pool, OperationalError, InterfaceError
+from psycopg2 import pool
 
 _pool = None
 
@@ -17,40 +17,17 @@ def get_pool():
             1, 10,
             dsn=url,
             cursor_factory=psycopg2.extras.RealDictCursor,
-            connect_timeout=5,
-            # Annule toute requête qui pend > 30 s (Supabase lent / réseau)
-            options="-c statement_timeout=30000",
+            connect_timeout=10,
         )
     return _pool
 
 
-def _getconn():
-    """Retourne une connexion vivante depuis le pool. Remplace les connexions périmées."""
+def query(sql: str, params=()) -> list[dict]:
     p = get_pool()
     try:
         conn = p.getconn()
     except pool.PoolError:
-        raise RuntimeError("Pool de connexions épuisé — réessaie dans quelques secondes.")
-
-    # Ping léger pour détecter les connexions périmées (idle timeout Supabase ~10 min)
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1")
-    except (OperationalError, InterfaceError):
-        try:
-            p.putconn(conn, close=True)
-        except Exception:
-            pass
-        try:
-            conn = p.getconn()
-        except pool.PoolError:
-            raise RuntimeError("Pool épuisé après reconnexion.")
-
-    return conn, p
-
-
-def query(sql: str, params=()) -> list[dict]:
-    conn, p = _getconn()
+        raise RuntimeError("Pool épuisé — réessaie dans quelques secondes.")
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params or None)
@@ -63,7 +40,11 @@ def query(sql: str, params=()) -> list[dict]:
 
 
 def execute(sql: str, params=()):
-    conn, p = _getconn()
+    p = get_pool()
+    try:
+        conn = p.getconn()
+    except pool.PoolError:
+        raise RuntimeError("Pool épuisé — réessaie dans quelques secondes.")
     try:
         with conn.cursor() as cur:
             cur.execute(sql, params or None)

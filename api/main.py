@@ -333,7 +333,7 @@ async def _report_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await asyncio.get_event_loop().run_in_executor(None, _init_tables)
+    _init_tables()
     tasks = [
         asyncio.create_task(_refresh_today_loop()),
         asyncio.create_task(_refresh_smart_loop()),
