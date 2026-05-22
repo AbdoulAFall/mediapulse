@@ -1,6 +1,7 @@
 import os
 import json
 import asyncio
+import concurrent.futures
 import requests as req
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -43,6 +44,8 @@ def _init_tables():
         )""",
         "CREATE INDEX IF NOT EXISTS idx_reports_matinale ON reports(matinale_id)",
         "CREATE INDEX IF NOT EXISTS idx_reports_status   ON reports(status)",
+        # Index pour les LATERAL joins sur le dernier snapshot (critique pour les perfs)
+        "CREATE INDEX IF NOT EXISTS idx_vs_matinale_snap ON view_snapshots(matinale_id, snapshot_at DESC)",
     ]
     for sql in statements:
         try:
@@ -278,14 +281,22 @@ def _seconds_until(hour: int) -> float:
     return max((target - now).total_seconds(), 60)
 
 
+# Executor dédié aux boucles background — séparé du pool FastAPI pour ne pas
+# bloquer les routes HTTP quand refresh/report tournent en parallèle.
+_BG_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=2, thread_name_prefix="mediapulse-bg"
+)
+
+
 # ── Boucles asynchrones ────────────────────────────────────────────────────────
 
 async def _refresh_today_loop():
     """Rafraîchit les vues J0 toutes les 15 min (5h–14h UTC, lun–ven)."""
-    await asyncio.sleep(60)   # laisse l'API démarrer
+    await asyncio.sleep(60)
+    loop = asyncio.get_running_loop()
     while True:
         try:
-            n = await asyncio.to_thread(_do_refresh_today)
+            n = await loop.run_in_executor(_BG_EXECUTOR, _do_refresh_today)
             if n:
                 print(f"[refresh-today] {n} snapshot(s) — {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
         except Exception as e:
@@ -295,10 +306,11 @@ async def _refresh_today_loop():
 
 async def _refresh_smart_loop():
     """Rafraîchit les vues J0–J30 toutes les 30 min (5h–14h UTC, lun–ven)."""
-    await asyncio.sleep(90)   # décalé par rapport à refresh_today
+    await asyncio.sleep(90)
+    loop = asyncio.get_running_loop()
     while True:
         try:
-            n = await asyncio.to_thread(_do_refresh_smart)
+            n = await loop.run_in_executor(_BG_EXECUTOR, _do_refresh_smart)
             if n:
                 print(f"[refresh-smart] {n} snapshot(s) — {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
         except Exception as e:
@@ -308,19 +320,20 @@ async def _refresh_smart_loop():
 
 async def _report_loop():
     """Envoie le rapport email chaque jour ouvré à 13h00 UTC pile."""
+    loop = asyncio.get_running_loop()
     while True:
         sleep_s = _seconds_until(_REPORT_HOUR_UTC)
         print(f"[report-loop] Prochain rapport dans {sleep_s/3600:.1f}h.")
         await asyncio.sleep(sleep_s)
         try:
-            await asyncio.to_thread(_do_report_today)
+            await loop.run_in_executor(_BG_EXECUTOR, _do_report_today)
         except Exception as e:
             print(f"[report-loop] Erreur : {e}")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _init_tables()
+    await asyncio.get_event_loop().run_in_executor(None, _init_tables)
     tasks = [
         asyncio.create_task(_refresh_today_loop()),
         asyncio.create_task(_refresh_smart_loop()),
@@ -329,6 +342,7 @@ async def lifespan(app: FastAPI):
     yield
     for t in tasks:
         t.cancel()
+    _BG_EXECUTOR.shutdown(wait=False)
     await asyncio.gather(*tasks, return_exceptions=True)
 
 
