@@ -98,4 +98,13 @@ CHANNELS = [
         "matinale_end":   "12:00",
         "title_hints": ["matinale.sn", "matinale sn"],
     },
+    {
+        "name": "Eric Favre TV",
+        "handle": "@ericfavretv",
+        "channel_id": "UCCuWTUI5DxAzhamgb_gA74w",  # confirmé
+        "active": True,
+        "matinale_start": "07:00",
+        "matinale_end":   "11:00",
+        "title_hints": [],  # pas de titre fixe — détection par fenêtre horaire uniquement
+    },
 ]
