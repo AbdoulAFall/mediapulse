@@ -385,6 +385,18 @@ def get_views_evolution(date: str | None = Query(None)):
     return list(by_matinale.values())
 
 
+@router.get("/events")
+def get_events():
+    """Jours spéciaux (depuis excluded_days) pour annotation sur les graphiques."""
+    rows = query("""
+        SELECT date::text AS date, reason
+        FROM excluded_days
+        WHERE reason IS NOT NULL AND reason != ''
+        ORDER BY date
+    """)
+    return rows
+
+
 @router.get("/timeline")
 def get_timeline(
     days: int = Query(60, ge=1, le=730),

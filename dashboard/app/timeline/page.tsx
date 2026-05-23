@@ -5,19 +5,20 @@ import PeriodSelector, { Period, periodToParams } from "@/components/PeriodSelec
 import {
   LineChart, Line, BarChart, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid,
-  Legend, ResponsiveContainer,
+  Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 // ── Couleurs ──────────────────────────────────────────────────────────────────
 const CHANNEL_COLORS: Record<string, string> = {
-  "TFM":         "#d0021b",
-  "RTS":         "#1a1714",
-  "2STV":        "#c0392b",
-  "Sen TV":      "#4a4440",
-  "Walf TV":     "#7a736a",
-  "Solution TV": "#8b0000",
+  "TFM":            "#d0021b",
+  "RTS":            "#1a1714",
+  "2STV":           "#c0392b",
+  "Sen TV":         "#4a4440",
+  "Walf TV":        "#7a736a",
+  "Solution TV":    "#8b0000",
+  "Eric Favre TV":  "#e67e22",
 };
 const FALLBACK_COLORS = ["#333", "#666", "#999", "#bbb", "#e53e3e", "#a30016"];
 
@@ -67,13 +68,14 @@ type Row = Record<string, number | string>;
 type Mode = "cumul" | "delta";
 
 // ── Tooltip graphique ─────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, mode, channels, allData }: {
+function ChartTooltip({ active, payload, label, mode, channels, allData, eventMap }: {
   active?: boolean;
   payload?: { name: string; value: number | null; color: string }[];
   label?: string;
   mode: Mode;
   channels: string[];
   allData: Row[];
+  eventMap?: Record<string, string>;
 }) {
   if (!active || !payload?.length || !label) return null;
 
@@ -85,14 +87,21 @@ function ChartTooltip({ active, payload, label, mode, channels, allData }: {
   const rowIdx = allData.findIndex((r) => r.date === label);
   const prevRow = rowIdx > 0 ? allData[rowIdx - 1] : null;
 
+  const event = eventMap?.[label ?? ""];
+
   return (
     <div style={{
       background: "var(--surface)", border: "1px solid var(--ink)",
       padding: "10px 14px", fontSize: 12, minWidth: 200,
     }}>
-      <p style={{ fontWeight: 700, color: "var(--ink)", marginBottom: 6 }}>
-        {fmtDateLong(label)}
+      <p style={{ fontWeight: 700, color: "var(--ink)", marginBottom: event ? 2 : 6 }}>
+        {fmtDateLong(label ?? "")}
       </p>
+      {event && (
+        <p style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, marginBottom: 6 }}>
+          📅 {event}
+        </p>
+      )}
       {sorted.map((p) => {
         const delta = mode === "cumul" && prevRow
           ? (p.value ?? 0) - ((prevRow[p.name] as number) ?? 0)
@@ -131,6 +140,13 @@ export default function TimelinePage() {
     (url: string) => fetch(url).then((r) => r.json()),
     { dedupingInterval: 5 * 60 * 1000, revalidateOnFocus: false }
   );
+
+  const { data: eventsData } = useSWR<{ date: string; reason: string }[]>(
+    `${API_URL}/api/events`,
+    (url: string) => fetch(url).then((r) => r.json()),
+    { dedupingInterval: 60 * 60 * 1000, revalidateOnFocus: false }
+  );
+  const eventMap = Object.fromEntries((eventsData ?? []).map((e) => [e.date, e.reason]));
 
   // Extrait les chaînes disponibles (scan toutes les lignes — certaines chaînes
   // n'apparaissent que sur des dates ultérieures et seraient manquantes avec data[0])
@@ -363,10 +379,15 @@ export default function TimelinePage() {
                       tick={{ fill: "var(--text-muted)", fontSize: 10 }}
                       axisLine={false} tickLine={false} width={52} />
                     <Tooltip content={
-                      <ChartTooltip mode="cumul" channels={selected} allData={filtered} />
+                      <ChartTooltip mode="cumul" channels={selected} allData={filtered} eventMap={eventMap} />
                     } />
                     <Legend iconType="circle" iconSize={8}
                       wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+                    {(eventsData ?? []).map((e) => (
+                      <ReferenceLine key={e.date} x={e.date}
+                        stroke="var(--accent)" strokeDasharray="4 2"
+                        strokeWidth={1.5} strokeOpacity={0.5} />
+                    ))}
                     {selected.map((ch, idx) => (
                       <Line key={ch} type="monotone" dataKey={ch}
                         stroke={channelColor(ch, idx)} strokeWidth={2}

@@ -1,7 +1,8 @@
 "use client";
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
+import { SpecialEvent } from "@/lib/api";
 
 const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
                  "#a30016","#4a4440","#8b0000","#555","#e53e3e"];
@@ -21,17 +22,21 @@ function fmtDate(d: string) {
 
 export default function TimelineChart({
   data,
+  events = [],
 }: {
   data: Record<string, number | string>[];
+  events?: SpecialEvent[];
 }) {
   if (!data.length) return null;
 
-  // Extrait toutes les chaînes présentes dans N'IMPORTE QUELLE ligne (pas seulement la première)
   const channels = Array.from(
     new Set(data.flatMap((row) => Object.keys(row).filter((k) => k !== "date")))
   );
   const hasViews = data.some((d) => channels.some((ch) => (d[ch] as number) > 0));
   const tickInterval = Math.max(1, Math.floor(data.length / 8));
+
+  // Map date → reason pour lookup rapide dans le tooltip
+  const eventMap = Object.fromEntries(events.map((e) => [e.date, e.reason]));
 
   return (
     <div style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
@@ -71,11 +76,28 @@ export default function TimelineChart({
                 axisLine={false} tickLine={false} width={40} />
               <Tooltip
                 contentStyle={{ background: "var(--surface)", border: "1px solid var(--ink)", borderRadius: 0, fontSize: 12 }}
-                labelFormatter={fmtDate}
+                labelFormatter={(label: string) => {
+                  const dateStr = fmtDate(label);
+                  const event   = eventMap[label];
+                  return event ? `${dateStr} · ${event}` : dateStr;
+                }}
                 labelStyle={{ color: "var(--ink)", fontWeight: 700, marginBottom: 4 }}
                 formatter={(v: number, name: string) => [fmt(v), name]}
               />
               <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} iconType="plainline" iconSize={16} />
+
+              {/* Lignes verticales pour les jours spéciaux */}
+              {events.map((e) => (
+                <ReferenceLine
+                  key={e.date}
+                  x={e.date}
+                  stroke="var(--accent)"
+                  strokeDasharray="4 2"
+                  strokeWidth={1.5}
+                  strokeOpacity={0.6}
+                />
+              ))}
+
               {channels.map((ch, i) => (
                 <Line key={ch} type="monotone" dataKey={ch}
                   stroke={COLORS[i % COLORS.length]}

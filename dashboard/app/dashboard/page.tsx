@@ -3,7 +3,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import {
   fetchStats, fetchMatinales, fetchTimeline, fetchSchedule, fetchViewsEvolution,
-  StatsResponse, Matinale, ScheduleEntry, MatinaleEvolution,
+  StatsResponse, Matinale, ScheduleEntry, MatinaleEvolution, SpecialEvent,
 } from "@/lib/api";
 import KPICards           from "@/components/KPICards";
 import ViewsChart         from "@/components/ViewsChart";
@@ -49,6 +49,8 @@ export default function Dashboard() {
     );
   const { data: timeline,  isLoading: timelineLoading } =
     useSWR<Record<string, number | string>[]>(`${API_URL}/api/timeline?${pq}`, fetcher, SWR_OPTIONS);
+  const { data: events } =
+    useSWR<SpecialEvent[]>(`${API_URL}/api/events`, fetcher, { ...SWR_OPTIONS, dedupingInterval: 60 * 60 * 1000 });
   const { data: schedule } =
     useSWR<ScheduleEntry[]>(`${API_URL}/api/schedule?${pq}`, fetcher, SWR_OPTIONS);
 
@@ -171,7 +173,7 @@ export default function Dashboard() {
             </div>
           : <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
               {stats    && <ShareChart  channels={stats.channels} />}
-              {timeline && timeline.length > 0 && <TimelineChart data={timeline} />}
+              {timeline && timeline.length > 0 && <TimelineChart data={timeline} events={events ?? []} />}
             </div>
         }
 

@@ -1010,6 +1010,7 @@ const CHANNEL_RULES = [
   { name: "Solution TV",    start: "07:00", end: "11:00", hints: [] },
   { name: "Sans Limites TV", start: "07:30", end: "11:00", hints: ["café actu", "cafe actu"] },
   { name: "Seneweb TV",     start: "08:00", end: "12:00", hints: ["matinale.sn", "matinale sn"] },
+  { name: "Eric Favre TV", start: "07:00", end: "11:00", hints: [] },
 ];
 
 function RulesTab() {

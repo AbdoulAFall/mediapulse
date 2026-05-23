@@ -95,3 +95,14 @@ export async function fetchViewsEvolution(date?: string): Promise<MatinaleEvolut
   if (!res.ok) throw new Error("Erreur API views/evolution");
   return res.json();
 }
+
+export interface SpecialEvent {
+  date: string;   // YYYY-MM-DD
+  reason: string;
+}
+
+export async function fetchEvents(): Promise<SpecialEvent[]> {
+  const res = await fetch(`${API_URL}/api/events`, { next: { revalidate: 3600 } });
+  if (!res.ok) return [];
+  return res.json();
+}
