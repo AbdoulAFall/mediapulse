@@ -41,6 +41,17 @@ interface Channel {
   name: string;
 }
 
+interface AdminChannel {
+  id: number;
+  name: string;
+  handle: string | null;
+  channel_id: string;    // colonne channel_id en base (= YouTube channel ID)
+  playlist_id: string;
+  active: number | boolean;
+  resolved_at: string;
+  matinale_count: number;
+}
+
 interface Subscriber {
   id: number;
   email: string;
@@ -49,7 +60,7 @@ interface Subscriber {
   created_at: string;
 }
 
-type Tab = "reports" | "matinales" | "excluded" | "subscribers" | "tools" | "rules";
+type Tab = "reports" | "matinales" | "excluded" | "subscribers" | "tools" | "rules" | "channels";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -868,9 +879,195 @@ function SubscribersTab({ token }: { token: string }) {
   );
 }
 
-// ── Onglet Outils ──────────────────────────────────────────────────────────
+// ── Onglet Chaînes ─────────────────────────────────────────────────────────
 
-const CHANNELS_LIST = ["TFM", "RTS", "2STV", "Sen TV", "Walf TV"];
+function ChannelsTab({ token }: { token: string }) {
+  const [channels, setChannels] = useState<AdminChannel[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [name, setName]         = useState("");
+  const [handle, setHandle]     = useState("");
+  const [adding, setAdding]     = useState(false);
+  const [addMsg, setAddMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/channels`, { headers: authHeaders(token) });
+      if (r.ok) setChannels(await r.json());
+    } finally { setLoading(false); }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function doAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !handle.trim()) return;
+    setAdding(true); setAddMsg(null);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/channels`, {
+        method: "POST", headers: authHeaders(token),
+        body: JSON.stringify({ name: name.trim(), handle: handle.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail);
+      const resolved = data.resolved_name ? ` (nom YouTube : "${data.resolved_name}")` : "";
+      setAddMsg({ ok: true, text: `✓ Chaîne ajoutée — ID : ${data.channel_id}${resolved}` });
+      setName(""); setHandle("");
+      load();
+    } catch (e: unknown) {
+      setAddMsg({ ok: false, text: `✗ ${e instanceof Error ? e.message : "Erreur"}` });
+    } finally { setAdding(false); }
+  }
+
+  async function doToggle(id: number) {
+    await fetch(`${API_URL}/api/admin/channels/${id}`, {
+      method: "PATCH", headers: authHeaders(token),
+    });
+    load();
+  }
+
+  async function doDelete(id: number, chName: string, cnt: number) {
+    if (cnt > 0) {
+      alert(`Impossible : ${cnt} matinale(s) liée(s) à "${chName}". Désactivez la chaîne à la place.`);
+      return;
+    }
+    if (!confirm(`Supprimer définitivement la chaîne "${chName}" ?`)) return;
+    const r = await fetch(`${API_URL}/api/admin/channels/${id}`, {
+      method: "DELETE", headers: authHeaders(token),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      alert(data.detail || "Erreur lors de la suppression.");
+    }
+    load();
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+
+      {/* Formulaire ajout */}
+      <div style={{ border: "1px solid var(--border)", padding: "16px 20px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Ajouter une chaîne
+        </p>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Le channel ID et la playlist ID sont résolus automatiquement via l&apos;API YouTube.
+        </p>
+        <form onSubmit={doAdd} className="flex flex-wrap gap-3 items-end">
+          <div style={{ minWidth: 160 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Nom affiché *</label>
+            <input
+              type="text" value={name} onChange={(e) => setName(e.target.value)} required
+              placeholder="Ex : TFM"
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+          <div className="flex-1" style={{ minWidth: 240 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Handle ou URL YouTube *</label>
+            <input
+              type="text" value={handle} onChange={(e) => setHandle(e.target.value)} required
+              placeholder="@TFMofficiel ou https://www.youtube.com/@..."
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+          <button type="submit" disabled={!name.trim() || !handle.trim() || adding}
+            className="px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
+            style={{ background: "var(--ink)", color: "white" }}>
+            {adding ? "Résolution…" : "+ Ajouter"}
+          </button>
+        </form>
+        {addMsg && (
+          <p className="text-xs mt-3" style={{ color: addMsg.ok ? "#2e7d32" : "var(--accent)" }}>
+            {addMsg.text}
+          </p>
+        )}
+      </div>
+
+      {/* Liste des chaînes */}
+      {loading && <p className="text-xs" style={{ color: "var(--text-muted)" }}>Chargement…</p>}
+      {!loading && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3"
+            style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+            {channels.length} chaîne{channels.length > 1 ? "s" : ""} en base
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)" }}>
+                  {["Chaîne", "Handle", "YouTube ID", "Matinales", "Statut", ""].map((h) => (
+                    <th key={h} className="px-3 py-2 text-left font-bold uppercase tracking-wider whitespace-nowrap"
+                      style={{ color: "var(--text-muted)", letterSpacing: "0.1em" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {channels.map((ch, i) => {
+                  const isActive = ch.active === 1 || ch.active === true;
+                  return (
+                    <tr key={ch.id} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)" }}>
+                      <td className="px-3 py-2 font-bold" style={{ color: "var(--ink)" }}>
+                        {ch.name}
+                      </td>
+                      <td className="px-3 py-2 font-mono" style={{ color: "var(--text-muted)" }}>
+                        {ch.handle ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 font-mono" style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                        <a
+                          href={`https://www.youtube.com/channel/${ch.channel_id}`}
+                          target="_blank" rel="noopener noreferrer"
+                          style={{ color: "var(--accent)", textDecoration: "none" }}>
+                          {ch.channel_id}
+                        </a>
+                      </td>
+                      <td className="px-3 py-2 text-center font-mono" style={{ color: "var(--text-muted)" }}>
+                        {ch.matinale_count}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="px-2 py-0.5 text-xs font-bold"
+                          style={{
+                            background: isActive ? "#e8f5e9" : "var(--surface2)",
+                            color:      isActive ? "#2e7d32" : "var(--text-muted)",
+                            border:     `1px solid ${isActive ? "#a5d6a7" : "var(--border)"}`,
+                          }}>
+                          {isActive ? "● Actif" : "○ Inactif"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <div className="flex gap-2">
+                          <ActionBtn
+                            label={isActive ? "⏸ Désactiver" : "▶ Activer"}
+                            onClick={() => doToggle(ch.id)}
+                          />
+                          <ActionBtn
+                            label="✕"
+                            onClick={() => doDelete(ch.id, ch.name, ch.matinale_count)}
+                            danger
+                            disabled={ch.matinale_count > 0}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs mt-3" style={{ color: "var(--text-muted)" }}>
+            ℹ La suppression est bloquée si la chaîne possède des matinales — désactivez-la à la place.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Onglet Outils ──────────────────────────────────────────────────────────
 
 function ToolsTab({ token }: { token: string }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -880,6 +1077,14 @@ function ToolsTab({ token }: { token: string }) {
   const [detectMsg, setDetectMsg]         = useState("");
   const [refreshStatus, setRefreshStatus] = useState<"idle"|"loading"|"ok"|"err">("idle");
   const [refreshMsg, setRefreshMsg]       = useState("");
+  const [channelsList, setChannelsList]   = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/channels`)
+      .then((r) => r.json())
+      .then((data: { name: string }[]) => setChannelsList(data.map((c) => c.name)))
+      .catch(() => {});
+  }, []);
 
   async function doRefreshNow() {
     if (!confirm("Déclencher un refresh immédiat des vues (bypass plage horaire) ?")) return;
@@ -987,7 +1192,7 @@ function ToolsTab({ token }: { token: string }) {
               style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit", minWidth: 180 }}
             >
               <option value="">— Toutes les chaînes —</option>
-              {CHANNELS_LIST.map((ch) => (
+              {channelsList.map((ch) => (
                 <option key={ch} value={ch}>{ch}</option>
               ))}
             </select>
@@ -1317,6 +1522,7 @@ export default function AdminPage() {
   const TABS: { key: Tab; label: string; badge?: number }[] = [
     { key: "reports",     label: "Signalements", badge: reportCount },
     { key: "matinales",   label: "Matinales"                        },
+    { key: "channels",    label: "Chaînes"                          },
     { key: "excluded",    label: "Jours exclus"                     },
     { key: "subscribers", label: "Abonnés email"                    },
     { key: "tools",       label: "Outils"                           },
@@ -1418,6 +1624,7 @@ export default function AdminPage() {
         {/* Contenu de l'onglet */}
         {tab === "reports"     && <ReportsTab      token={token} />}
         {tab === "matinales"   && <MatinalesTab    token={token} />}
+        {tab === "channels"    && <ChannelsTab     token={token} />}
         {tab === "excluded"    && <ExcludedDaysTab token={token} />}
         {tab === "subscribers" && <SubscribersTab  token={token} />}
         {tab === "tools"       && <ToolsTab        token={token} />}

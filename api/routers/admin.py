@@ -60,6 +60,12 @@ class SubscriberCreate(BaseModel):
     email: str
     name: Optional[str] = None
 
+class ChannelCreate(BaseModel):
+    name: str                     # Nom affiché (ex: "TFM")
+    handle: str                   # @handle ou URL YouTube complète
+    start_time: Optional[str] = None  # "07:00" (optionnel, pour la doc)
+    end_time:   Optional[str] = None  # "11:00"
+
 
 # ── YouTube helpers ───────────────────────────────────────────────────────────
 
@@ -577,6 +583,122 @@ def refresh_now(x_admin_token: str = Header(default="")):
         "Aucun snapshot inséré — soit aucune matinale aujourd'hui, soit les vues ont été rafraîchies récemment (< 15 min)."
     )
     return results
+
+
+# ── Admin : Chaînes ───────────────────────────────────────────────────────────
+
+def _resolve_channel(handle_or_url: str) -> dict:
+    """
+    Résout un handle YouTube (@xxx), une URL complète ou un channel_id (UCxxx)
+    en retournant { channel_id, playlist_id, channel_name }.
+    La clé `channel_id` correspond à la colonne `channel_id` de la table channels.
+    """
+    if not YT_KEY:
+        raise HTTPException(status_code=503, detail="YOUTUBE_API_KEY non configurée.")
+
+    s = handle_or_url.strip()
+
+    # Cas 1 : URL /channel/UCxxx
+    m = re.search(r"/channel/(UC[A-Za-z0-9_-]+)", s)
+    if m:
+        cid = m.group(1)
+        return {"channel_id": cid, "playlist_id": "UU" + cid[2:], "channel_name": None}
+
+    # Cas 2 : raw channel_id UCxxx
+    if re.match(r"^UC[A-Za-z0-9_-]{22}$", s):
+        return {"channel_id": s, "playlist_id": "UU" + s[2:], "channel_name": None}
+
+    # Cas 3 : @handle (dans URL ou brut)
+    m = re.search(r"@([A-Za-z0-9_.-]+)", s)
+    handle_clean = ("@" + m.group(1)) if m else ("@" + s.lstrip("@"))
+
+    r = requests.get(f"{YT_BASE}/channels", params={
+        "part":      "id,snippet",
+        "forHandle": handle_clean,
+        "key":       YT_KEY,
+    }, timeout=10)
+    r.raise_for_status()
+    items = r.json().get("items", [])
+    if not items:
+        raise HTTPException(status_code=404, detail=f"Chaîne introuvable pour {handle_clean}. Vérifie le handle ou utilise l'URL complète.")
+
+    cid  = items[0]["id"]
+    name = items[0]["snippet"].get("title")
+    return {"channel_id": cid, "playlist_id": "UU" + cid[2:], "channel_name": name, "handle": handle_clean}
+
+
+@router.get("/admin/channels")
+def list_channels_admin(x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+    # S'assure que la colonne handle existe (migration idempotente)
+    try:
+        execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS handle TEXT")
+    except Exception:
+        pass
+    return query("""
+        SELECT id, name, handle, channel_id, playlist_id, active, resolved_at,
+               (SELECT COUNT(*) FROM matinales WHERE channel_id = channels.id) AS matinale_count
+        FROM channels
+        ORDER BY id
+    """)
+
+
+@router.post("/admin/channels", status_code=201)
+def add_channel(body: ChannelCreate, x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+
+    # Migration handle si besoin
+    try:
+        execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS handle TEXT")
+    except Exception:
+        pass
+
+    resolved    = _resolve_channel(body.handle)
+    yt_cid      = resolved["channel_id"]   # valeur de la colonne channel_id en base
+    playlist_id = resolved["playlist_id"]
+    handle      = resolved.get("handle") or body.handle.strip()
+
+    existing = query("SELECT id FROM channels WHERE channel_id = %s", (yt_cid,))
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Cette chaîne est déjà en base (id={existing[0]['id']}).")
+
+    execute(
+        "INSERT INTO channels (name, handle, channel_id, playlist_id, active) VALUES (%s, %s, %s, %s, 1)",
+        (body.name.strip(), handle, yt_cid, playlist_id),
+    )
+    new_row = query("SELECT id FROM channels WHERE channel_id = %s", (yt_cid,))
+    return {
+        "ok":            True,
+        "id":            new_row[0]["id"] if new_row else None,
+        "channel_id":    yt_cid,
+        "playlist_id":   playlist_id,
+        "handle":        handle,
+        "resolved_name": resolved.get("channel_name"),
+    }
+
+
+@router.patch("/admin/channels/{channel_id}")
+def toggle_channel(channel_id: int, x_admin_token: str = Header(default="")):
+    """Active ou désactive une chaîne (toggle)."""
+    require_admin(x_admin_token)
+    rows = query("SELECT active FROM channels WHERE id = %s", (channel_id,))
+    if not rows:
+        raise HTTPException(status_code=404, detail="Chaîne introuvable.")
+    new_state = 0 if rows[0]["active"] else 1
+    execute("UPDATE channels SET active = %s WHERE id = %s", (new_state, channel_id))
+    return {"ok": True, "active": bool(new_state)}
+
+
+@router.delete("/admin/channels/{channel_id}", status_code=204)
+def delete_channel(channel_id: int, x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+    cnt = query("SELECT COUNT(*) AS cnt FROM matinales WHERE channel_id = %s", (channel_id,))
+    if cnt and int(cnt[0]["cnt"]) > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Impossible de supprimer : {cnt[0]['cnt']} matinale(s) liée(s). Désactivez la chaîne à la place.",
+        )
+    execute("DELETE FROM channels WHERE id = %s", (channel_id,))
 
 
 # ── Admin : Déclenchement détection via GitHub Actions ────────────────────────
