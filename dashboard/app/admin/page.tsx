@@ -330,9 +330,14 @@ function MatinalesTab({ token }: { token: string }) {
 
   async function doDelete(id: number) {
     if (!confirm("Supprimer cette matinale et tous ses snapshots ?")) return;
-    await fetch(`${API_URL}/api/admin/matinales/${id}`, {
+    const r = await fetch(`${API_URL}/api/admin/matinales/${id}`, {
       method: "DELETE", headers: authHeaders(token),
     });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      alert(`Erreur ${r.status} : ${body.detail ?? "Suppression impossible"}`);
+      return;
+    }
     load();
   }
 

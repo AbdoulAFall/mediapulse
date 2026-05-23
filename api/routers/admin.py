@@ -224,6 +224,8 @@ def delete_matinale(matinale_id: int, x_admin_token: str = Header(default="")):
     require_admin(x_admin_token)
     if not query("SELECT id FROM matinales WHERE id = %s", (matinale_id,)):
         raise HTTPException(status_code=404, detail="Matinale introuvable.")
+    # Supprime d'abord les snapshots (FK sans CASCADE) puis la matinale
+    execute("DELETE FROM view_snapshots WHERE matinale_id = %s", (matinale_id,))
     execute("DELETE FROM matinales WHERE id = %s", (matinale_id,))
 
 
