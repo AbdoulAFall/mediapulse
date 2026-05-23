@@ -1,8 +1,8 @@
 name: MediaPulse — Rapport email quotidien
 
 on:
-  schedule:
-    - cron: '0 13 * * 1-5'   # 13h00 UTC, lun–ven
+  # Le rapport quotidien est désormais envoyé par la boucle Railway à 16h00 UTC.
+  # Ce workflow est conservé uniquement pour les tests manuels (workflow_dispatch).
   workflow_dispatch:
 
 jobs:
