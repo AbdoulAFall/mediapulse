@@ -1,4 +1,12 @@
-# Ajouter une chaîne : copier un bloc, renseigner name + handle ou channel_id, active=True.
+# ──────────────────────────────────────────────────────────────────────────────
+# SEED INITIAL — ce fichier n'est lu qu'une seule fois par storage.init_db()
+# pour peupler les colonnes matinale_start / matinale_end / title_hints
+# dans la table channels si elles sont vides.
+#
+# ➜ Pour ajouter ou modifier une chaîne en production :
+#      Admin → Chaînes (interface web)
+#    La DB est la source de vérité unique depuis storage.py v2.
+# ──────────────────────────────────────────────────────────────────────────────
 # matinale_start / matinale_end : heure UTC+0 (= heure de Dakar, pas de décalage)
 # title_hints : mots-clés du nom de l'émission pour aider le scorer
 

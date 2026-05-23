@@ -1,4 +1,5 @@
 import os
+import json
 from datetime import datetime, timedelta, timezone
 
 import psycopg2
@@ -89,23 +90,101 @@ def init_db():
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+            # Migration : colonnes de configuration chaîne (source de vérité unique)
+            cur.execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_start TEXT DEFAULT '07:00'")
+            cur.execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_end   TEXT DEFAULT '11:00'")
+            cur.execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS title_hints    TEXT DEFAULT '[]'")
+
+            # Seed initial : copie la config statique vers la DB si les colonnes sont vides
+            try:
+                from channel_config import CHANNELS as _SEED
+                for _ch in _SEED:
+                    cur.execute("""
+                        UPDATE channels
+                        SET matinale_start = COALESCE(NULLIF(matinale_start, '07:00'), %s),
+                            matinale_end   = COALESCE(NULLIF(matinale_end,   '11:00'), %s),
+                            title_hints    = COALESCE(NULLIF(title_hints,    '[]'),    %s)
+                        WHERE name = %s
+                          AND (matinale_start IS NULL OR matinale_end IS NULL OR title_hints IS NULL
+                               OR matinale_start = '07:00' OR title_hints = '[]')
+                    """, (
+                        _ch.get("matinale_start", "07:00"),
+                        _ch.get("matinale_end",   "11:00"),
+                        json.dumps(_ch.get("title_hints", [])),
+                        _ch["name"],
+                    ))
+            except ImportError:
+                pass  # channel_config.py absent → pas de seed
+
         conn.commit()
 
 
-def upsert_channel(name: str, handle: str | None, channel_id: str, playlist_id: str) -> int:
+def upsert_channel(
+    name: str,
+    handle: str | None,
+    channel_id: str,
+    playlist_id: str,
+    matinale_start: str | None = None,
+    matinale_end: str | None = None,
+    title_hints: list | None = None,
+) -> int:
+    hints_json = json.dumps(title_hints) if title_hints is not None else None
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO channels (name, handle, channel_id, playlist_id, resolved_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO channels (name, handle, channel_id, playlist_id, resolved_at,
+                                      matinale_start, matinale_end, title_hints)
+                VALUES (%s, %s, %s, %s, %s,
+                        COALESCE(%s, '07:00'), COALESCE(%s, '11:00'), COALESCE(%s, '[]'))
                 ON CONFLICT (channel_id) DO UPDATE SET
-                    playlist_id = EXCLUDED.playlist_id,
-                    resolved_at = EXCLUDED.resolved_at
+                    playlist_id    = EXCLUDED.playlist_id,
+                    resolved_at    = EXCLUDED.resolved_at,
+                    matinale_start = COALESCE(EXCLUDED.matinale_start, channels.matinale_start),
+                    matinale_end   = COALESCE(EXCLUDED.matinale_end,   channels.matinale_end),
+                    title_hints    = COALESCE(EXCLUDED.title_hints,    channels.title_hints)
                 RETURNING id
-            """, (name, handle, channel_id, playlist_id, datetime.now(timezone.utc)))
+            """, (
+                name, handle, channel_id, playlist_id, datetime.now(timezone.utc),
+                matinale_start, matinale_end, hints_json,
+            ))
             row = cur.fetchone()
         conn.commit()
         return row["id"]
+
+
+def get_active_channels() -> list[dict]:
+    """Retourne les chaînes actives avec toute leur configuration (source de vérité : DB)."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT id, name, handle, channel_id, playlist_id,
+                       COALESCE(matinale_start, '07:00') AS matinale_start,
+                       COALESCE(matinale_end,   '11:00') AS matinale_end,
+                       COALESCE(title_hints,    '[]')    AS title_hints
+                FROM channels
+                WHERE active = 1
+                ORDER BY id
+            """)
+            rows = cur.fetchall()
+    result = []
+    for row in rows:
+        hints = row["title_hints"]
+        if isinstance(hints, str):
+            try:
+                hints = json.loads(hints)
+            except Exception:
+                hints = []
+        result.append({
+            "db_id":          row["id"],
+            "name":           row["name"],
+            "handle":         row["handle"],
+            "channel_id":     row["channel_id"],
+            "playlist_id":    row["playlist_id"],
+            "matinale_start": row["matinale_start"],
+            "matinale_end":   row["matinale_end"],
+            "title_hints":    hints,
+        })
+    return result
 
 
 def get_matinale_id_by_video_id(youtube_video_id: str) -> int | None:

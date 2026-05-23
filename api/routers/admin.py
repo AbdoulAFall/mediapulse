@@ -61,10 +61,17 @@ class SubscriberCreate(BaseModel):
     name: Optional[str] = None
 
 class ChannelCreate(BaseModel):
-    name: str                     # Nom affiché (ex: "TFM")
-    handle: str                   # @handle ou URL YouTube complète
-    start_time: Optional[str] = None  # "07:00" (optionnel, pour la doc)
-    end_time:   Optional[str] = None  # "11:00"
+    name:           str                    # Nom affiché (ex: "TFM")
+    handle:         str                    # @handle ou URL YouTube complète
+    matinale_start: Optional[str] = "07:00"  # heure UTC début fenêtre
+    matinale_end:   Optional[str] = "11:00"  # heure UTC fin fenêtre
+    title_hints:    Optional[list] = []    # mots-clés titre (peut être vide)
+
+class ChannelUpdate(BaseModel):
+    name:           Optional[str] = None
+    matinale_start: Optional[str] = None
+    matinale_end:   Optional[str] = None
+    title_hints:    Optional[list] = None
 
 
 # ── YouTube helpers ───────────────────────────────────────────────────────────
@@ -637,6 +644,9 @@ def list_channels_admin(x_admin_token: str = Header(default="")):
         pass
     return query("""
         SELECT id, name, handle, channel_id, playlist_id, active, resolved_at,
+               COALESCE(matinale_start, '07:00') AS matinale_start,
+               COALESCE(matinale_end,   '11:00') AS matinale_end,
+               COALESCE(title_hints,    '[]')    AS title_hints,
                (SELECT COUNT(*) FROM matinales WHERE channel_id = channels.id) AS matinale_count
         FROM channels
         ORDER BY id
@@ -662,9 +672,15 @@ def add_channel(body: ChannelCreate, x_admin_token: str = Header(default="")):
     if existing:
         raise HTTPException(status_code=409, detail=f"Cette chaîne est déjà en base (id={existing[0]['id']}).")
 
+    import json as _json
     execute(
-        "INSERT INTO channels (name, handle, channel_id, playlist_id, active) VALUES (%s, %s, %s, %s, 1)",
-        (body.name.strip(), handle, yt_cid, playlist_id),
+        """INSERT INTO channels (name, handle, channel_id, playlist_id, active,
+                                 matinale_start, matinale_end, title_hints)
+           VALUES (%s, %s, %s, %s, 1, %s, %s, %s)""",
+        (body.name.strip(), handle, yt_cid, playlist_id,
+         body.matinale_start or "07:00",
+         body.matinale_end   or "11:00",
+         _json.dumps(body.title_hints or [])),
     )
     new_row = query("SELECT id FROM channels WHERE channel_id = %s", (yt_cid,))
     return {
@@ -675,6 +691,32 @@ def add_channel(body: ChannelCreate, x_admin_token: str = Header(default="")):
         "handle":        handle,
         "resolved_name": resolved.get("channel_name"),
     }
+
+
+@router.put("/admin/channels/{channel_id}")
+def update_channel(channel_id: int, body: ChannelUpdate, x_admin_token: str = Header(default="")):
+    """Met à jour la configuration d'une chaîne (fenêtre horaire, hints, nom)."""
+    require_admin(x_admin_token)
+    import json as _json
+    if not query("SELECT id FROM channels WHERE id = %s", (channel_id,)):
+        raise HTTPException(status_code=404, detail="Chaîne introuvable.")
+
+    fields, values = [], []
+    if body.name is not None:
+        fields.append("name = %s"); values.append(body.name.strip())
+    if body.matinale_start is not None:
+        fields.append("matinale_start = %s"); values.append(body.matinale_start)
+    if body.matinale_end is not None:
+        fields.append("matinale_end = %s"); values.append(body.matinale_end)
+    if body.title_hints is not None:
+        fields.append("title_hints = %s"); values.append(_json.dumps(body.title_hints))
+
+    if not fields:
+        return {"ok": True, "message": "Aucun champ modifié."}
+
+    values.append(channel_id)
+    execute(f"UPDATE channels SET {', '.join(fields)} WHERE id = %s", values)
+    return {"ok": True}
 
 
 @router.patch("/admin/channels/{channel_id}")

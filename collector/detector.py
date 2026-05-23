@@ -9,7 +9,6 @@ Logique de sélection par journée :
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 
-from channel_config import CHANNELS
 import youtube_client as yt
 import storage
 import scorer
@@ -41,32 +40,17 @@ DEFAULT_LOOKBACK_DAYS = 60
 
 
 def sync_channels() -> list[dict]:
-    """Résout channel_id/playlist_id et persiste en base. Retourne les chaînes actives."""
-    active = []
-    for ch in CHANNELS:
-        if not ch["active"]:
-            continue
-        print(f"  → Résolution {ch['name']}...", end=" ", flush=True)
-        try:
-            resolved_id, playlist_id = yt.resolve_channel(
-                ch.get("handle"), ch.get("channel_id")
-            )
-            db_id = storage.upsert_channel(
-                ch["name"], ch.get("handle"), resolved_id, playlist_id
-            )
-            print(f"OK (id={resolved_id})")
-            active.append({
-                "db_id": db_id,
-                "name": ch["name"],
-                "channel_id": resolved_id,
-                "playlist_id": playlist_id,
-                "matinale_start": ch.get("matinale_start", "07:00"),
-                "matinale_end":   ch.get("matinale_end",   "12:00"),
-                "title_hints": ch.get("title_hints", []),
-            })
-        except Exception as e:
-            print(f"ERREUR : {e}")
-    return active
+    """
+    Lit les chaînes actives depuis la DB (source de vérité unique).
+    La DB est peuplée via l'interface admin ou via le seed initial de channel_config.py.
+    """
+    channels = storage.get_active_channels()
+    if not channels:
+        print("  ⚠ Aucune chaîne active en base. Ajoute des chaînes via Admin → Chaînes.")
+        return []
+    for ch in channels:
+        print(f"  → {ch['name']}... OK (id={ch['channel_id']})")
+    return channels
 
 
 def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) -> int:

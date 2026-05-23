@@ -45,10 +45,13 @@ interface AdminChannel {
   id: number;
   name: string;
   handle: string | null;
-  channel_id: string;    // colonne channel_id en base (= YouTube channel ID)
+  channel_id: string;
   playlist_id: string;
   active: number | boolean;
   resolved_at: string;
+  matinale_start: string;
+  matinale_end: string;
+  title_hints: string;   // JSON string "[]" ou "[\"infos matin\"]"
   matinale_count: number;
 }
 
@@ -961,10 +964,21 @@ function SubscribersTab({ token }: { token: string }) {
 function ChannelsTab({ token }: { token: string }) {
   const [channels, setChannels] = useState<AdminChannel[]>([]);
   const [loading, setLoading]   = useState(false);
+  // Ajout
   const [name, setName]         = useState("");
   const [handle, setHandle]     = useState("");
+  const [addStart, setAddStart] = useState("07:00");
+  const [addEnd, setAddEnd]     = useState("11:00");
+  const [addHints, setAddHints] = useState("");
   const [adding, setAdding]     = useState(false);
   const [addMsg, setAddMsg]     = useState<{ ok: boolean; text: string } | null>(null);
+  // Édition
+  const [editing, setEditing]   = useState<AdminChannel | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd]   = useState("");
+  const [editHints, setEditHints] = useState("");
+  const [saving, setSaving]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -976,46 +990,74 @@ function ChannelsTab({ token }: { token: string }) {
 
   useEffect(() => { load(); }, [load]);
 
+  function openEdit(ch: AdminChannel) {
+    let hints: string[] = [];
+    try { hints = JSON.parse(ch.title_hints || "[]"); } catch { hints = []; }
+    setEditing(ch);
+    setEditName(ch.name);
+    setEditStart(ch.matinale_start || "07:00");
+    setEditEnd(ch.matinale_end || "11:00");
+    setEditHints(hints.join(", "));
+  }
+
+  async function doSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const hints = editHints.split(",").map((s) => s.trim()).filter(Boolean);
+      const r = await fetch(`${API_URL}/api/admin/channels/${editing.id}`, {
+        method: "PUT", headers: authHeaders(token),
+        body: JSON.stringify({
+          name:           editName.trim(),
+          matinale_start: editStart,
+          matinale_end:   editEnd,
+          title_hints:    hints,
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail);
+      setEditing(null);
+      load();
+    } catch (err: unknown) {
+      alert(`Erreur : ${err instanceof Error ? err.message : "Erreur"}`);
+    } finally { setSaving(false); }
+  }
+
   async function doAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || !handle.trim()) return;
     setAdding(true); setAddMsg(null);
     try {
+      const hints = addHints.split(",").map((s) => s.trim()).filter(Boolean);
       const r = await fetch(`${API_URL}/api/admin/channels`, {
         method: "POST", headers: authHeaders(token),
-        body: JSON.stringify({ name: name.trim(), handle: handle.trim() }),
+        body: JSON.stringify({
+          name: name.trim(), handle: handle.trim(),
+          matinale_start: addStart, matinale_end: addEnd,
+          title_hints: hints,
+        }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail);
-      const resolved = data.resolved_name ? ` (nom YouTube : "${data.resolved_name}")` : "";
-      setAddMsg({ ok: true, text: `✓ Chaîne ajoutée — ID : ${data.channel_id}${resolved}` });
-      setName(""); setHandle("");
+      const resolved = data.resolved_name ? ` (YouTube : "${data.resolved_name}")` : "";
+      setAddMsg({ ok: true, text: `✓ Chaîne ajoutée — ${data.channel_id}${resolved}` });
+      setName(""); setHandle(""); setAddHints(""); setAddStart("07:00"); setAddEnd("11:00");
       load();
-    } catch (e: unknown) {
-      setAddMsg({ ok: false, text: `✗ ${e instanceof Error ? e.message : "Erreur"}` });
+    } catch (err: unknown) {
+      setAddMsg({ ok: false, text: `✗ ${err instanceof Error ? err.message : "Erreur"}` });
     } finally { setAdding(false); }
   }
 
   async function doToggle(id: number) {
-    await fetch(`${API_URL}/api/admin/channels/${id}`, {
-      method: "PATCH", headers: authHeaders(token),
-    });
+    await fetch(`${API_URL}/api/admin/channels/${id}`, { method: "PATCH", headers: authHeaders(token) });
     load();
   }
 
   async function doDelete(id: number, chName: string, cnt: number) {
-    if (cnt > 0) {
-      alert(`Impossible : ${cnt} matinale(s) liée(s) à "${chName}". Désactivez la chaîne à la place.`);
-      return;
-    }
-    if (!confirm(`Supprimer définitivement la chaîne "${chName}" ?`)) return;
-    const r = await fetch(`${API_URL}/api/admin/channels/${id}`, {
-      method: "DELETE", headers: authHeaders(token),
-    });
-    if (!r.ok) {
-      const data = await r.json().catch(() => ({}));
-      alert(data.detail || "Erreur lors de la suppression.");
-    }
+    if (cnt > 0) { alert(`Impossible : ${cnt} matinale(s) liée(s) — désactivez à la place.`); return; }
+    if (!confirm(`Supprimer définitivement "${chName}" ?`)) return;
+    const r = await fetch(`${API_URL}/api/admin/channels/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); alert(d.detail || "Erreur"); }
     load();
   }
 
@@ -1024,31 +1066,44 @@ function ChannelsTab({ token }: { token: string }) {
 
       {/* Formulaire ajout */}
       <div style={{ border: "1px solid var(--border)", padding: "16px 20px" }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-1"
-          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
           Ajouter une chaîne
         </p>
         <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-          Le channel ID et la playlist ID sont résolus automatiquement via l&apos;API YouTube.
+          Le channel ID est résolu automatiquement via YouTube. La configuration est sauvegardée en base — le collector la lira directement.
         </p>
         <form onSubmit={doAdd} className="flex flex-wrap gap-3 items-end">
-          <div style={{ minWidth: 160 }}>
-            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Nom affiché *</label>
-            <input
-              type="text" value={name} onChange={(e) => setName(e.target.value)} required
-              placeholder="Ex : TFM"
+          <div style={{ minWidth: 140 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Nom *</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} required placeholder="TFM"
               className="w-full text-xs p-2 outline-none"
-              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
-            />
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
           </div>
-          <div className="flex-1" style={{ minWidth: 240 }}>
-            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Handle ou URL YouTube *</label>
-            <input
-              type="text" value={handle} onChange={(e) => setHandle(e.target.value)} required
-              placeholder="@TFMofficiel ou https://www.youtube.com/@..."
+          <div className="flex-1" style={{ minWidth: 200 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Handle / URL YouTube *</label>
+            <input type="text" value={handle} onChange={(e) => setHandle(e.target.value)} required placeholder="@TFMofficiel"
               className="w-full text-xs p-2 outline-none"
-              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
-            />
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+          </div>
+          <div style={{ width: 80 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Début UTC</label>
+            <input type="time" value={addStart} onChange={(e) => setAddStart(e.target.value)}
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+          </div>
+          <div style={{ width: 80 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Fin UTC</label>
+            <input type="time" value={addEnd} onChange={(e) => setAddEnd(e.target.value)}
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+          </div>
+          <div className="flex-1" style={{ minWidth: 180 }}>
+            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
+              Mots-clés titre <span style={{ fontWeight: 400 }}>(séparés par des virgules)</span>
+            </label>
+            <input type="text" value={addHints} onChange={(e) => setAddHints(e.target.value)} placeholder="infos matin, revue de presse"
+              className="w-full text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
           </div>
           <button type="submit" disabled={!name.trim() || !handle.trim() || adding}
             className="px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
@@ -1057,76 +1112,71 @@ function ChannelsTab({ token }: { token: string }) {
           </button>
         </form>
         {addMsg && (
-          <p className="text-xs mt-3" style={{ color: addMsg.ok ? "#2e7d32" : "var(--accent)" }}>
-            {addMsg.text}
-          </p>
+          <p className="text-xs mt-3" style={{ color: addMsg.ok ? "#2e7d32" : "var(--accent)" }}>{addMsg.text}</p>
         )}
       </div>
 
-      {/* Liste des chaînes */}
+      {/* Liste */}
       {loading && <p className="text-xs" style={{ color: "var(--text-muted)" }}>Chargement…</p>}
       {!loading && (
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3"
-            style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
             {channels.length} chaîne{channels.length > 1 ? "s" : ""} en base
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)" }}>
-                  {["Chaîne", "Handle", "YouTube ID", "Matinales", "Statut", ""].map((h) => (
+                  {["Chaîne", "Fenêtre UTC", "Mots-clés", "Matinales", "Statut", ""].map((h) => (
                     <th key={h} className="px-3 py-2 text-left font-bold uppercase tracking-wider whitespace-nowrap"
-                      style={{ color: "var(--text-muted)", letterSpacing: "0.1em" }}>
-                      {h}
-                    </th>
+                      style={{ color: "var(--text-muted)", letterSpacing: "0.1em" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {channels.map((ch, i) => {
                   const isActive = ch.active === 1 || ch.active === true;
+                  let hints: string[] = [];
+                  try { hints = JSON.parse(ch.title_hints || "[]"); } catch { hints = []; }
                   return (
                     <tr key={ch.id} style={{ borderBottom: "1px solid var(--border)", background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)" }}>
-                      <td className="px-3 py-2 font-bold" style={{ color: "var(--ink)" }}>
-                        {ch.name}
+                      <td className="px-3 py-2">
+                        <div className="font-bold" style={{ color: "var(--ink)" }}>{ch.name}</div>
+                        <div className="font-mono text-xs" style={{ color: "var(--text-muted)", fontSize: 10 }}>
+                          <a href={`https://www.youtube.com/channel/${ch.channel_id}`} target="_blank" rel="noopener noreferrer"
+                            style={{ color: "var(--accent)", textDecoration: "none" }}>
+                            {ch.handle ?? ch.channel_id}
+                          </a>
+                        </div>
                       </td>
-                      <td className="px-3 py-2 font-mono" style={{ color: "var(--text-muted)" }}>
-                        {ch.handle ?? "—"}
+                      <td className="px-3 py-2 font-mono whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                        {ch.matinale_start ?? "07:00"} – {ch.matinale_end ?? "11:00"}
                       </td>
-                      <td className="px-3 py-2 font-mono" style={{ color: "var(--text-muted)", fontSize: 10 }}>
-                        <a
-                          href={`https://www.youtube.com/channel/${ch.channel_id}`}
-                          target="_blank" rel="noopener noreferrer"
-                          style={{ color: "var(--accent)", textDecoration: "none" }}>
-                          {ch.channel_id}
-                        </a>
+                      <td className="px-3 py-2">
+                        {hints.length > 0
+                          ? <div className="flex flex-wrap gap-1">
+                              {hints.map((h) => (
+                                <span key={h} className="px-1.5 py-0.5 font-mono"
+                                  style={{ background: "var(--ink)", color: "white", fontSize: 9 }}>{h}</span>
+                              ))}
+                            </div>
+                          : <span className="italic" style={{ color: "var(--text-muted)", fontSize: 10 }}>Fenêtre seule</span>
+                        }
                       </td>
                       <td className="px-3 py-2 text-center font-mono" style={{ color: "var(--text-muted)" }}>
                         {ch.matinale_count}
                       </td>
                       <td className="px-3 py-2">
                         <span className="px-2 py-0.5 text-xs font-bold"
-                          style={{
-                            background: isActive ? "#e8f5e9" : "var(--surface2)",
-                            color:      isActive ? "#2e7d32" : "var(--text-muted)",
-                            border:     `1px solid ${isActive ? "#a5d6a7" : "var(--border)"}`,
-                          }}>
+                          style={{ background: isActive ? "#e8f5e9" : "var(--surface2)", color: isActive ? "#2e7d32" : "var(--text-muted)", border: `1px solid ${isActive ? "#a5d6a7" : "var(--border)"}` }}>
                           {isActive ? "● Actif" : "○ Inactif"}
                         </span>
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex gap-2">
-                          <ActionBtn
-                            label={isActive ? "⏸ Désactiver" : "▶ Activer"}
-                            onClick={() => doToggle(ch.id)}
-                          />
-                          <ActionBtn
-                            label="✕"
-                            onClick={() => doDelete(ch.id, ch.name, ch.matinale_count)}
-                            danger
-                            disabled={ch.matinale_count > 0}
-                          />
+                          <ActionBtn label="✎ Éditer" onClick={() => openEdit(ch)} />
+                          <ActionBtn label={isActive ? "⏸" : "▶"} onClick={() => doToggle(ch.id)} />
+                          <ActionBtn label="✕" onClick={() => doDelete(ch.id, ch.name, ch.matinale_count)} danger disabled={ch.matinale_count > 0} />
                         </div>
                       </td>
                     </tr>
@@ -1136,9 +1186,56 @@ function ChannelsTab({ token }: { token: string }) {
             </table>
           </div>
           <p className="text-xs mt-3" style={{ color: "var(--text-muted)" }}>
-            ℹ La suppression est bloquée si la chaîne possède des matinales — désactivez-la à la place.
+            ℹ ✎ pour modifier la fenêtre horaire ou les mots-clés. La suppression est bloquée si des matinales sont liées.
           </p>
         </div>
+      )}
+
+      {/* Modal édition */}
+      {editing && (
+        <Modal title={`Éditer — ${editing.name}`} subtitle="Modifications prises en compte au prochain sync" onClose={() => setEditing(null)}>
+          <form onSubmit={doSave} className="flex flex-col gap-4">
+            <div>
+              <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Nom affiché</label>
+              <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} required
+                className="w-full text-xs p-2 outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Début UTC</label>
+                <input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)}
+                  className="w-full text-xs p-2 outline-none"
+                  style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Fin UTC</label>
+                <input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)}
+                  className="w-full text-xs p-2 outline-none"
+                  style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
+                Mots-clés titre <span style={{ fontWeight: 400 }}>(séparés par des virgules — vide = fenêtre horaire seule)</span>
+              </label>
+              <input type="text" value={editHints} onChange={(e) => setEditHints(e.target.value)}
+                placeholder="infos matin, revue de presse"
+                className="w-full text-xs p-2 outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={() => setEditing(null)}
+                className="flex-1 px-4 py-2 text-xs font-bold uppercase"
+                style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}>Annuler</button>
+              <button type="submit" disabled={saving}
+                className="flex-1 px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
+                style={{ background: "var(--accent)", color: "white" }}>
+                {saving ? "Sauvegarde…" : "Sauvegarder"}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   );
