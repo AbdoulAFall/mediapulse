@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
 
 from database import query, execute
+from refresh import do_refresh_today, do_refresh_smart
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -547,6 +548,35 @@ def send_report_now(body: ReportSendBody = ReportSendBody(), x_admin_token: str 
         "matinales":  len(rows),
         "resend_id":  resp.json().get("id"),
     }
+
+
+# ── Admin : Refresh manuel (test) ────────────────────────────────────────────
+
+@router.post("/admin/refresh-now")
+def refresh_now(x_admin_token: str = Header(default="")):
+    """
+    Déclenche un refresh immédiat des vues (bypass plage horaire + week-end).
+    Utile pour tester le système sans attendre lun–ven 5h–14h UTC.
+    """
+    require_admin(x_admin_token)
+
+    import concurrent.futures
+    results = {}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        f_today = ex.submit(do_refresh_today, True)   # force=True
+        f_smart = ex.submit(do_refresh_smart, True)
+        results["refresh_today"] = f_today.result()
+        results["refresh_smart"] = f_smart.result()
+
+    total = results["refresh_today"] + results["refresh_smart"]
+    results["total_snapshots"] = total
+    results["message"] = (
+        f"{total} snapshot(s) insérés."
+        if total else
+        "Aucun snapshot inséré — soit aucune matinale aujourd'hui, soit les vues ont été rafraîchies récemment (< 15 min)."
+    )
+    return results
 
 
 # ── Admin : Déclenchement détection via GitHub Actions ────────────────────────

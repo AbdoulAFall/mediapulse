@@ -795,6 +795,25 @@ function ToolsTab({ token }: { token: string }) {
   const [detectChannel, setDetectChannel] = useState("");
   const [detectStatus, setDetectStatus]   = useState<"idle"|"loading"|"ok"|"err">("idle");
   const [detectMsg, setDetectMsg]         = useState("");
+  const [refreshStatus, setRefreshStatus] = useState<"idle"|"loading"|"ok"|"err">("idle");
+  const [refreshMsg, setRefreshMsg]       = useState("");
+
+  async function doRefreshNow() {
+    if (!confirm("Déclencher un refresh immédiat des vues (bypass plage horaire) ?")) return;
+    setRefreshStatus("loading"); setRefreshMsg("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/refresh-now`, {
+        method: "POST", headers: authHeaders(token),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail);
+      setRefreshStatus("ok");
+      setRefreshMsg(`✓ ${data.message} (today: ${data.refresh_today}, smart: ${data.refresh_smart})`);
+    } catch (e: unknown) {
+      setRefreshStatus("err");
+      setRefreshMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
+    }
+  }
 
   async function doDetect(e: React.FormEvent) {
     e.preventDefault();
@@ -817,6 +836,35 @@ function ToolsTab({ token }: { token: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+
+      {/* Refresh manuel */}
+      <div style={{ border: "1px solid #2e7d32", padding: "20px 24px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Tester le refresh des vues
+        </p>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Déclenche immédiatement les boucles <strong>Refresh J0</strong> et <strong>Refresh Smart</strong> sans tenir compte de la plage horaire ni du jour. Utile pour vérifier que le système fonctionne après un nouveau déploiement.
+        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <button
+            onClick={doRefreshNow}
+            disabled={refreshStatus === "loading"}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-opacity hover:opacity-80"
+            style={{ background: "#2e7d32", color: "white" }}>
+            {refreshStatus === "loading" ? "Refresh en cours…" : "▶ Refresh maintenant"}
+          </button>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Nécessite au moins une matinale en base pour aujourd'hui.
+          </span>
+        </div>
+        {refreshMsg && (
+          <p className="text-xs mt-3 px-1" style={{ color: refreshStatus === "ok" ? "#2e7d32" : "var(--accent)" }}>
+            {refreshMsg}
+          </p>
+        )}
+      </div>
+
       {/* Détection par date */}
       <div style={{ border: "1px solid var(--border)", padding: "20px 24px" }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-1"
