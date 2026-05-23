@@ -60,7 +60,7 @@ def get_stats(
             WHERE matinale_id = m.id
             ORDER BY snapshot_at DESC LIMIT 1
         ) vs ON m.id IS NOT NULL
-        WHERE c.active = true
+        WHERE c.active = 1
         GROUP BY c.name
         ORDER BY total_views DESC
     """, params)
@@ -116,7 +116,7 @@ def get_matinales(
             vs.view_count,
             vs.like_count
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id AND c.active = true
+        JOIN channels c ON c.id = m.channel_id AND c.active = 1
         LEFT JOIN LATERAL (
             SELECT view_count, like_count
             FROM view_snapshots
@@ -164,7 +164,7 @@ def search_matinales(
     page_size:    int        = Query(50, ge=1, le=200),
 ):
     """Recherche paginée avec filtres avancés."""
-    filters: list[str] = ["c.active = true"]
+    filters: list[str] = ["c.active = 1"]
     params:  list      = []
 
     if search:
@@ -295,7 +295,7 @@ def get_schedule(
         FROM matinales m
         JOIN channels c ON c.id = m.channel_id
         WHERE m.published_at >= %s {until_clause}
-          AND c.active = true
+          AND c.active = 1
           AND m.duration_seconds IS NOT NULL
           AND m.duration_seconds > 0
         GROUP BY c.name
@@ -348,7 +348,7 @@ def get_views_evolution(date: str | None = Query(None)):
             vs.like_count,
             vs.comment_count
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id AND c.active = true
+        JOIN channels c ON c.id = m.channel_id AND c.active = 1
         JOIN view_snapshots vs ON vs.matinale_id = m.id
         WHERE m.published_at >= %s::date
           AND m.published_at <  %s::date + INTERVAL '1 day'
@@ -399,7 +399,7 @@ def get_timeline(
             c.name AS channel,
             COALESCE(SUM(vs.view_count), 0) AS views
         FROM matinales m
-        JOIN channels c ON c.id = m.channel_id AND c.active = true
+        JOIN channels c ON c.id = m.channel_id AND c.active = 1
         LEFT JOIN LATERAL (
             SELECT view_count
             FROM view_snapshots
