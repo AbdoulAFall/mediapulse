@@ -701,7 +701,7 @@ function SubscribersTab({ token }: { token: string }) {
           </button>
         </div>
         <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-          📅 Rapport automatique chaque jour ouvré à 13h UTC.
+          📅 Rapport automatique chaque jour ouvré à 16h UTC.
         </p>
       </div>
 
@@ -906,7 +906,31 @@ function ToolsTab({ token }: { token: string }) {
 
 // ── Onglet Règles & Crons ──────────────────────────────────────────────────
 
-const CRONS = [
+const RAILWAY_LOOPS = [
+  {
+    label: "Refresh vues J0",
+    schedule: "Toutes les 15 min",
+    hours: "5h00 – 14h00 UTC",
+    days: "Lun – Ven",
+    description: "Met à jour le compteur de vues des matinales d'aujourd'hui en temps quasi-réel.",
+  },
+  {
+    label: "Refresh vues (smart)",
+    schedule: "Toutes les 30 min",
+    hours: "5h00 – 14h00 UTC",
+    days: "Lun – Ven",
+    description: "J0–J3 : refresh si > 6h · J4–J30 : refresh si > 24h · J31+ : ignoré.",
+  },
+  {
+    label: "Rapport email quotidien",
+    schedule: "1 fois / jour",
+    hours: "16h00 UTC",
+    days: "Lun – Ven",
+    description: "Envoie le rapport de vues du jour à tous les abonnés actifs via Resend.",
+  },
+];
+
+const GITHUB_CRONS = [
   {
     workflow: "detect.yml",
     label: "Détection matinales",
@@ -917,40 +941,13 @@ const CRONS = [
     description: "Scanne la playlist YouTube de chaque chaîne et insère les nouveaux lives détectés.",
   },
   {
-    workflow: "refresh-today.yml",
-    label: "Refresh vues J0",
-    schedule: "Toutes les 15 min",
-    hours: "6h00 – 13h00 UTC",
-    days: "Lun – Ven",
-    command: "python main.py refresh_today",
-    description: "Met à jour le compteur de vues des matinales d'aujourd'hui en temps quasi-réel.",
-  },
-  {
-    workflow: "refresh-smart.yml",
-    label: "Refresh vues (smart)",
-    schedule: "Toutes les 30 min",
-    hours: "5h00 – 13h00 UTC",
-    days: "Lun – Ven",
-    command: "python main.py refresh_smart",
-    description: "J0–J3 : refresh si > 6h · J4–J30 : refresh si > 24h · J31+ : ignoré.",
-  },
-  {
-    workflow: "report.yml",
-    label: "Rapport email quotidien",
-    schedule: "1 fois / jour",
-    hours: "13h00 UTC",
-    days: "Lun – Ven",
-    command: "python main.py report_today",
-    description: "Envoie le rapport de vues du jour à tous les abonnés actifs via Resend.",
-  },
-  {
     workflow: "sync.yml",
     label: "Sync historique",
     schedule: "Manuel uniquement",
     hours: "—",
     days: "—",
     command: "python main.py sync N",
-    description: "Resynchronise les N derniers jours pour toutes les chaînes (ou une seule). Déclenché depuis GitHub Actions ou l'onglet Outils.",
+    description: "Resynchronise les N derniers jours pour toutes les chaînes (ou une seule). Déclenché depuis l'onglet Outils.",
   },
 ];
 
@@ -971,6 +968,44 @@ function RulesTab() {
   return (
     <div className="flex flex-col gap-8">
 
+      {/* Boucles Railway (background) */}
+      <div>
+        <div className="flex items-center gap-3 mb-4">
+          <p className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+            Planification — Railway
+          </p>
+          <span className="text-xs font-bold px-2 py-0.5" style={{ background: "#2e7d32", color: "white" }}>
+            ● Actif en permanence
+          </span>
+        </div>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Ces tâches tournent en boucle dans le process FastAPI (asyncio). Elles démarrent automatiquement au lancement de Railway et ne nécessitent aucune action externe.
+        </p>
+        <div className="flex flex-col gap-3">
+          {RAILWAY_LOOPS.map((c) => (
+            <div key={c.label} style={{ border: "1px solid #2e7d32", padding: "14px 18px" }}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-bold px-2 py-0.5"
+                      style={{ background: "var(--ink)", color: "white" }}>
+                      {c.schedule}
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: "var(--ink)" }}>{c.label}</span>
+                  </div>
+                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>{c.description}</p>
+                </div>
+                <div className="flex flex-col gap-1 text-right flex-shrink-0">
+                  <span className="text-xs font-semibold" style={{ color: "var(--ink)" }}>{c.hours}</span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{c.days}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Crons GitHub Actions */}
       <div>
         <p className="text-xs font-bold uppercase tracking-widest mb-4"
@@ -978,7 +1013,7 @@ function RulesTab() {
           Planification — GitHub Actions
         </p>
         <div className="flex flex-col gap-3">
-          {CRONS.map((c) => (
+          {GITHUB_CRONS.map((c) => (
             <div key={c.workflow} style={{ border: "1px solid var(--border)", padding: "14px 18px" }}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">

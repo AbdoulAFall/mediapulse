@@ -27,7 +27,7 @@ _REFRESH_START_H    = 5
 _REFRESH_END_H      = 14
 _REFRESH_TODAY_S    = 15 * 60   # toutes les 15 min
 _REFRESH_SMART_S    = 30 * 60   # toutes les 30 min
-_REPORT_HOUR_UTC    = 13        # rapport email à 13h00 UTC
+_REPORT_HOUR_UTC    = 16        # rapport email à 16h00 UTC
 
 
 def _init_tables():
