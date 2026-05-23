@@ -637,11 +637,17 @@ def _resolve_channel(handle_or_url: str) -> dict:
 @router.get("/admin/channels")
 def list_channels_admin(x_admin_token: str = Header(default="")):
     require_admin(x_admin_token)
-    # S'assure que la colonne handle existe (migration idempotente)
-    try:
-        execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS handle TEXT")
-    except Exception:
-        pass
+    # Migrations idempotentes — s'exécutent côté API au premier appel
+    for col_sql in [
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS handle         TEXT",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_start TEXT DEFAULT '07:00'",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_end   TEXT DEFAULT '11:00'",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS title_hints    TEXT DEFAULT '[]'",
+    ]:
+        try:
+            execute(col_sql)
+        except Exception:
+            pass
     return query("""
         SELECT id, name, handle, channel_id, playlist_id, active, resolved_at,
                COALESCE(matinale_start, '07:00') AS matinale_start,
@@ -657,11 +663,17 @@ def list_channels_admin(x_admin_token: str = Header(default="")):
 def add_channel(body: ChannelCreate, x_admin_token: str = Header(default="")):
     require_admin(x_admin_token)
 
-    # Migration handle si besoin
-    try:
-        execute("ALTER TABLE channels ADD COLUMN IF NOT EXISTS handle TEXT")
-    except Exception:
-        pass
+    # Migrations idempotentes
+    for col_sql in [
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS handle         TEXT",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_start TEXT DEFAULT '07:00'",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_end   TEXT DEFAULT '11:00'",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS title_hints    TEXT DEFAULT '[]'",
+    ]:
+        try:
+            execute(col_sql)
+        except Exception:
+            pass
 
     resolved    = _resolve_channel(body.handle)
     yt_cid      = resolved["channel_id"]   # valeur de la colonne channel_id en base
@@ -698,6 +710,15 @@ def update_channel(channel_id: int, body: ChannelUpdate, x_admin_token: str = He
     """Met à jour la configuration d'une chaîne (fenêtre horaire, hints, nom)."""
     require_admin(x_admin_token)
     import json as _json
+    for col_sql in [
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_start TEXT DEFAULT '07:00'",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_end   TEXT DEFAULT '11:00'",
+        "ALTER TABLE channels ADD COLUMN IF NOT EXISTS title_hints    TEXT DEFAULT '[]'",
+    ]:
+        try:
+            execute(col_sql)
+        except Exception:
+            pass
     if not query("SELECT id FROM channels WHERE id = %s", (channel_id,)):
         raise HTTPException(status_code=404, detail="Chaîne introuvable.")
 
