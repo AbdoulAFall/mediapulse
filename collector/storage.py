@@ -154,6 +154,21 @@ def upsert_channel(
 
 def get_active_channels() -> list[dict]:
     """Retourne les chaînes actives avec toute leur configuration (source de vérité : DB)."""
+    # Migration idempotente — garantit que les colonnes existent avant de les lire
+    # (nécessaire si init_db() n'a pas encore tourné sur cet environnement)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for col_sql in [
+                "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_start TEXT DEFAULT '07:00'",
+                "ALTER TABLE channels ADD COLUMN IF NOT EXISTS matinale_end   TEXT DEFAULT '11:00'",
+                "ALTER TABLE channels ADD COLUMN IF NOT EXISTS title_hints    TEXT DEFAULT '[]'",
+            ]:
+                try:
+                    cur.execute(col_sql)
+                except Exception:
+                    pass
+        conn.commit()
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
