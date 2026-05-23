@@ -509,30 +509,62 @@ function MatinalesTab({ token }: { token: string }) {
 
 // ── Onglet Jours exclus ────────────────────────────────────────────────────
 
-const FR_DAYS = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+const FR_DAYS        = ["Dimanche","Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"];
+const FR_DAYS_SHORT  = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+const FR_MONTHS      = ["Janvier","Février","Mars","Avril","Mai","Juin",
+                        "Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 
 function isWeekend(dateStr: string) {
   const d = new Date(dateStr + "T12:00:00Z");
   return d.getUTCDay() === 0 || d.getUTCDay() === 6;
 }
-
 function getDayName(dateStr: string) {
-  const d = new Date(dateStr + "T12:00:00Z");
-  return FR_DAYS[d.getUTCDay()];
+  return FR_DAYS[new Date(dateStr + "T12:00:00Z").getUTCDay()];
+}
+function getDayShort(dateStr: string) {
+  return FR_DAYS_SHORT[new Date(dateStr + "T12:00:00Z").getUTCDay()];
+}
+
+/** Génère tous les jours exclus d'une année (weekends + exclusions manuelles) */
+function buildYearExclusions(
+  year: number,
+  manualDays: ExcludedDay[],
+): { date: string; type: "weekend" | "manual"; reason: string | null; id?: number }[] {
+  const manualMap = Object.fromEntries(
+    manualDays.filter((d) => !isWeekend(d.date)).map((d) => [d.date, d])
+  );
+  const result = [];
+  for (let m = 0; m < 12; m++) {
+    const daysInMonth = new Date(Date.UTC(year, m + 1, 0)).getUTCDate();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dow = new Date(dateStr + "T12:00:00Z").getUTCDay();
+      if (dow === 0 || dow === 6) {
+        result.push({ date: dateStr, type: "weekend" as const, reason: "Week-end" });
+      } else if (manualMap[dateStr]) {
+        const entry = manualMap[dateStr];
+        result.push({ date: dateStr, type: "manual" as const, reason: entry.reason, id: entry.id });
+      }
+    }
+  }
+  return result;
 }
 
 function ExcludedDaysTab({ token }: { token: string }) {
-  const [days, setDays]       = useState<ExcludedDay[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [date, setDate]       = useState("");
-  const [reason, setReason]   = useState("");
-  const [adding, setAdding]   = useState(false);
+  const currentYear = new Date().getFullYear();
+  const [manualDays, setManualDays] = useState<ExcludedDay[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [year, setYear]             = useState(currentYear);
+  const [date, setDate]             = useState("");
+  const [reason, setReason]         = useState("");
+  const [adding, setAdding]         = useState(false);
+  const [showForm, setShowForm]     = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const r = await fetch(`${API_URL}/api/admin/excluded-days`, { headers: authHeaders(token) });
-      setDays(await r.json());
+      setManualDays(await r.json());
     } finally { setLoading(false); }
   }, [token]);
 
@@ -542,11 +574,11 @@ function ExcludedDaysTab({ token }: { token: string }) {
     e.preventDefault();
     if (!date) return;
     if (isWeekend(date)) {
-      alert("Les week-ends sont déjà exclus automatiquement. Ajoute uniquement des jours de semaine.");
+      alert("Les week-ends sont déjà exclus automatiquement.");
       return;
     }
     if (!reason.trim()) {
-      alert("Le motif est obligatoire pour les jours en semaine (il apparaît sur le graphique Timeline).");
+      alert("Le motif est obligatoire (il apparaît sur la timeline).");
       return;
     }
     setAdding(true);
@@ -556,10 +588,10 @@ function ExcludedDaysTab({ token }: { token: string }) {
         body: JSON.stringify({ date, reason: reason.trim() }),
       });
       if (!r.ok) throw new Error((await r.json()).detail);
-      setDate(""); setReason("");
+      setDate(""); setReason(""); setShowForm(false);
       load();
-    } catch (e: unknown) {
-      alert(`Erreur : ${e instanceof Error ? e.message : "Erreur"}`);
+    } catch (err: unknown) {
+      alert(`Erreur : ${err instanceof Error ? err.message : "Erreur"}`);
     } finally { setAdding(false); }
   }
 
@@ -571,121 +603,166 @@ function ExcludedDaysTab({ token }: { token: string }) {
     load();
   }
 
-  // Filtre uniquement les jours de semaine (les week-ends n'ont pas lieu d'être ici)
-  const weekdays = days.filter((d) => !isWeekend(d.date));
-  const weekends = days.filter((d) =>  isWeekend(d.date));
+  const allExclusions = buildYearExclusions(year, manualDays);
+  const totalWeekends = allExclusions.filter((d) => d.type === "weekend").length;
+  const manualWeekdays = allExclusions.filter((d) => d.type === "manual");
+
+  // Groupé par mois
+  const byMonth: typeof allExclusions[] = Array.from({ length: 12 }, (_, m) =>
+    allExclusions.filter((d) => parseInt(d.date.split("-")[1]) === m + 1)
+  );
 
   return (
     <div className="flex flex-col gap-6">
 
-      {/* Info système */}
-      <div style={{ border: "1px solid var(--border)", padding: "14px 20px", background: "var(--surface2)" }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-2"
-          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
-          Exclusions automatiques
-        </p>
-        <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--text-muted)" }}>
-          <p>📅 <strong style={{ color: "var(--ink)" }}>Samedis & Dimanches</strong> — exclus automatiquement, aucune action requise.</p>
-          <p>📊 <strong style={{ color: "var(--ink)" }}>Jours en semaine ci-dessous</strong> — apparaissent comme lignes rouges sur le graphique Timeline au survol.</p>
-        </div>
-      </div>
-
-      {/* Formulaire ajout */}
-      <div style={{ border: "1px solid var(--border)", padding: "16px 20px" }}>
-        <p className="text-xs font-bold uppercase tracking-widest mb-1"
-          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
-          Exclure un jour en semaine
-        </p>
-        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-          Le motif est obligatoire — il s&apos;affiche sur la timeline au survol de la date.
-        </p>
-        <form onSubmit={doAdd} className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Date *</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required
-              className="text-xs p-2 outline-none"
-              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
-            {date && (
-              <p className="text-xs mt-1" style={{
-                color: isWeekend(date) ? "var(--accent)" : "#2e7d32", fontWeight: 600,
+      {/* Barre de contrôle */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        {/* Sélecteur d'année */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>Année</span>
+          {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+            <button key={y} onClick={() => setYear(y)}
+              className="px-3 py-1 text-xs font-bold"
+              style={{
+                background: year === y ? "var(--ink)" : "transparent",
+                color:      year === y ? "white"      : "var(--text-muted)",
+                border:     "1px solid var(--border)",
               }}>
-                {isWeekend(date) ? "⚠ Week-end — déjà exclu automatiquement" : `✓ ${getDayName(date)}`}
-              </p>
-            )}
-          </div>
-          <div className="flex-1" style={{ minWidth: 200 }}>
-            <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
-              Motif * <span style={{ fontWeight: 400 }}>(visible sur la timeline)</span>
-            </label>
-            <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
-              placeholder="Ex : Lundi de Pâques, Tabaski, Magal…"
-              className="w-full text-xs p-2 outline-none"
-              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
-          </div>
-          <button type="submit" disabled={!date || !reason.trim() || adding || isWeekend(date)}
-            className="px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
-            style={{ background: "var(--ink)", color: "white" }}>
-            {adding ? "…" : "+ Exclure"}
-          </button>
-        </form>
+              {y}
+            </button>
+          ))}
+        </div>
+
+        {/* Résumé */}
+        <div className="flex items-center gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
+          <span><strong style={{ color: "var(--ink)" }}>{totalWeekends}</strong> week-ends</span>
+          <span>+</span>
+          <span><strong style={{ color: "var(--accent)" }}>{manualWeekdays.length}</strong> jours fériés</span>
+          <span>=</span>
+          <span><strong style={{ color: "var(--ink)" }}>{allExclusions.length}</strong> jours exclus</span>
+        </div>
+
+        {/* Bouton ajouter */}
+        <button onClick={() => setShowForm((v) => !v)}
+          className="px-4 py-2 text-xs font-bold uppercase"
+          style={{ background: showForm ? "var(--surface2)" : "var(--ink)", color: showForm ? "var(--text-muted)" : "white", border: "1px solid var(--border)" }}>
+          {showForm ? "✕ Annuler" : "+ Ajouter un jour férié"}
+        </button>
       </div>
 
-      {/* Liste jours en semaine */}
-      {loading && <p className="text-xs" style={{ color: "var(--text-muted)" }}>Chargement…</p>}
-
-      {!loading && (
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest mb-3"
-            style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
-            Jours en semaine exclus — {weekdays.length} jour{weekdays.length > 1 ? "s" : ""}
+      {/* Formulaire ajout (collapsible) */}
+      {showForm && (
+        <div style={{ border: "1px solid var(--border)", padding: "16px 20px", background: "var(--surface)" }}>
+          <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+            Exclure un jour en semaine
           </p>
-
-          {weekdays.length === 0 ? (
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Aucun jour en semaine exclu. Ajoute des jours fériés ou événements spéciaux ci-dessus.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {weekdays
-                .sort((a, b) => b.date.localeCompare(a.date))
-                .map((d) => (
-                <div key={d.id} className="flex items-center justify-between gap-4 px-4 py-3"
-                  style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
-                  <div className="flex items-center gap-4 min-w-0">
-                    {/* Indicateur rouge (annotation timeline) */}
-                    <div style={{ width: 3, height: 32, background: "var(--accent)", flexShrink: 0 }} />
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold px-2 py-0.5"
-                          style={{ background: "var(--surface2)", color: "var(--text-muted)", border: "1px solid var(--border)" }}>
-                          {getDayName(d.date)}
-                        </span>
-                        <span className="text-sm font-bold font-mono" style={{ color: "var(--ink)" }}>
-                          {d.date.split("-").reverse().join("/")}
-                        </span>
-                      </div>
-                      {d.reason && (
-                        <p className="text-xs mt-1 font-semibold" style={{ color: "var(--accent)" }}>
-                          📅 {d.reason}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <ActionBtn label="✕ Retirer" onClick={() => doDelete(d.id)} danger />
-                </div>
-              ))}
+          <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+            Le motif s&apos;affiche sur la timeline au survol. Les week-ends sont exclus automatiquement.
+          </p>
+          <form onSubmit={doAdd} className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>Date *</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required
+                className="text-xs p-2 outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+              {date && (
+                <p className="text-xs mt-1 font-semibold" style={{ color: isWeekend(date) ? "var(--accent)" : "#2e7d32" }}>
+                  {isWeekend(date) ? "⚠ Week-end — déjà exclu automatiquement" : `✓ ${getDayName(date)}`}
+                </p>
+              )}
             </div>
-          )}
-
-          {/* Mention des week-ends en base (nettoyage) */}
-          {weekends.length > 0 && (
-            <p className="text-xs mt-4" style={{ color: "var(--text-muted)" }}>
-              ℹ {weekends.length} entrée(s) week-end en base (inutiles — les samedis/dimanches sont déjà exclus automatiquement).{" "}
-              {weekends.map((d) => d.date).join(", ")}
-            </p>
-          )}
+            <div className="flex-1" style={{ minWidth: 200 }}>
+              <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
+                Motif * <span style={{ fontWeight: 400 }}>(visible sur la timeline)</span>
+              </label>
+              <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="Ex : Lundi de Pâques, Tabaski, Magal…"
+                className="w-full text-xs p-2 outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
+            </div>
+            <button type="submit" disabled={!date || !reason.trim() || adding || isWeekend(date)}
+              className="px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
+              style={{ background: "var(--ink)", color: "white" }}>
+              {adding ? "…" : "+ Exclure"}
+            </button>
+          </form>
         </div>
       )}
+
+      {/* Légende */}
+      <div className="flex items-center gap-5 text-xs" style={{ color: "var(--text-muted)" }}>
+        <div className="flex items-center gap-2">
+          <span className="inline-block px-2 py-0.5 font-bold"
+            style={{ background: "#f0ede8", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+            Sam / Dim
+          </span>
+          <span>Week-end (auto)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-block px-2 py-0.5 font-bold"
+            style={{ background: "#fdecea", border: "1px solid var(--accent)", color: "var(--accent)" }}>
+            Jour férié
+          </span>
+          <span>Exclusion manuelle · visible sur la timeline</span>
+        </div>
+      </div>
+
+      {/* Calendrier annuel */}
+      {loading
+        ? <p className="text-xs" style={{ color: "var(--text-muted)" }}>Chargement…</p>
+        : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {byMonth.map((entries, m) => (
+              <div key={m} style={{ border: "1px solid var(--border)", background: "var(--surface)" }}>
+                {/* En-tête mois */}
+                <div className="px-4 py-2 flex items-center justify-between"
+                  style={{ borderBottom: "1px solid var(--border)", background: "var(--surface2)" }}>
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--ink)" }}>
+                    {FR_MONTHS[m]} {year}
+                  </span>
+                  <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+                    {entries.filter((e) => e.type === "manual").length > 0 && (
+                      <span style={{ color: "var(--accent)", fontWeight: 700 }}>
+                        {entries.filter((e) => e.type === "manual").length} férié{entries.filter((e) => e.type === "manual").length > 1 ? "s" : ""} ·{" "}
+                      </span>
+                    )}
+                    {entries.filter((e) => e.type === "weekend").length} W-E
+                  </span>
+                </div>
+
+                {/* Chips des jours exclus */}
+                <div className="p-3 flex flex-wrap gap-1.5">
+                  {entries.length === 0 ? (
+                    <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>Aucun jour exclu</span>
+                  ) : entries.map((entry) => (
+                    entry.type === "weekend" ? (
+                      <span key={entry.date}
+                        className="text-xs px-2 py-0.5 font-mono"
+                        style={{ background: "#f0ede8", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+                        {getDayShort(entry.date)} {parseInt(entry.date.split("-")[2])}
+                      </span>
+                    ) : (
+                      <span key={entry.date}
+                        className="text-xs px-2 py-0.5 font-semibold flex items-center gap-1"
+                        style={{ background: "#fdecea", border: "1px solid var(--accent)", color: "var(--accent)" }}
+                        title={entry.reason ?? ""}>
+                        {getDayShort(entry.date)} {parseInt(entry.date.split("-")[2])} · {entry.reason}
+                        <button
+                          onClick={() => entry.id && doDelete(entry.id)}
+                          className="ml-1 font-bold leading-none hover:opacity-60"
+                          style={{ fontSize: 10, lineHeight: 1 }}
+                          title="Retirer cette exclusion">
+                          ✕
+                        </button>
+                      </span>
+                    )
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
     </div>
   );
 }
