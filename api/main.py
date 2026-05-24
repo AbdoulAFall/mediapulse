@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from routers import stats, admin
 from database import execute, query
-from refresh import do_refresh_today, do_refresh_smart
+from refresh import do_refresh_today, do_refresh_smart, do_refresh_missing_durations
 
 YT_KEY        = os.environ.get("YOUTUBE_API_KEY", "")
 YT_BASE       = "https://www.googleapis.com/youtube/v3"
@@ -190,6 +190,20 @@ async def _refresh_smart_loop():
         await asyncio.sleep(_REFRESH_SMART_S)
 
 
+async def _refresh_durations_loop():
+    """Rafraîchit les durées manquantes toutes les heures (vidéos live terminées)."""
+    await asyncio.sleep(120)  # délai initial court pour couvrir les lives du matin
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            n = await loop.run_in_executor(_BG_EXECUTOR, do_refresh_missing_durations)
+            if n:
+                print(f"[refresh-durations] {n} durée(s) mise(s) à jour — {datetime.now(timezone.utc).strftime('%H:%M UTC')}")
+        except Exception as e:
+            print(f"[refresh-durations] Erreur : {e}")
+        await asyncio.sleep(60 * 60)  # toutes les heures
+
+
 async def _report_loop():
     """Envoie le rapport email chaque jour ouvré à 13h00 UTC pile."""
     loop = asyncio.get_running_loop()
@@ -214,6 +228,7 @@ async def lifespan(app: FastAPI):
     tasks = [
         asyncio.create_task(_refresh_today_loop()),
         asyncio.create_task(_refresh_smart_loop()),
+        asyncio.create_task(_refresh_durations_loop()),
         asyncio.create_task(_report_loop()),
     ]
     yield

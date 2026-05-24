@@ -3,6 +3,7 @@ Logique de refresh des vues YouTube.
 Importé par main.py (boucles background) et admin.py (endpoint manuel).
 """
 import os
+import re
 import requests
 from datetime import datetime, timezone, timedelta
 from database import query, execute
@@ -87,6 +88,68 @@ def do_refresh_today(force: bool = False) -> int:
     """, (fifteen_min_ago,))
 
     return _fetch_and_insert(rows)
+
+
+def _parse_duration(iso: str) -> int | None:
+    """ISO 8601 → secondes. Ex: PT1H23M45S → 5025. Retourne None si durée nulle ou invalide."""
+    m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", iso or "")
+    if not m:
+        return None
+    h, mn, s = (int(x or 0) for x in m.groups())
+    total = h * 3600 + mn * 60 + s
+    return total if total > 0 else None
+
+
+def do_refresh_missing_durations() -> int:
+    """
+    Récupère et enregistre la durée réelle pour toutes les matinales avec duration_seconds IS NULL.
+
+    Cas typique : vidéo détectée en live (durée = "P0D" sur YouTube) → durée stockée NULL.
+    Une fois le live terminé, YouTube expose la vraie durée — ce refresh la récupère.
+    """
+    if not YT_KEY:
+        return 0
+
+    rows = query("""
+        SELECT id, youtube_video_id
+        FROM matinales
+        WHERE duration_seconds IS NULL
+        ORDER BY published_at DESC
+    """)
+    if not rows:
+        return 0
+
+    video_ids = [r["youtube_video_id"] for r in rows]
+    id_map    = {r["youtube_video_id"]: r["id"] for r in rows}
+    updated   = 0
+
+    for i in range(0, len(video_ids), 50):
+        batch = video_ids[i : i + 50]
+        try:
+            resp = requests.get(f"{YT_BASE}/videos", params={
+                "id":   ",".join(batch),
+                "part": "contentDetails",
+                "key":  YT_KEY,
+            }, timeout=15)
+            if resp.status_code != 200:
+                continue
+            for item in resp.json().get("items", []):
+                vid_id   = item["id"]
+                duration = _parse_duration(item["contentDetails"].get("duration", ""))
+                if not duration:
+                    continue  # live encore en cours ou durée inconnue
+                mat_id = id_map.get(vid_id)
+                if not mat_id:
+                    continue
+                execute(
+                    "UPDATE matinales SET duration_seconds = %s WHERE id = %s",
+                    (duration, mat_id),
+                )
+                updated += 1
+        except Exception:
+            pass
+
+    return updated
 
 
 def do_refresh_missing() -> int:

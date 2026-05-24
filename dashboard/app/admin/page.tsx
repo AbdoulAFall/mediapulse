@@ -1306,6 +1306,8 @@ function ToolsTab({ token }: { token: string }) {
   const [refreshMsg, setRefreshMsg]               = useState("");
   const [missingStatus, setMissingStatus]         = useState<"idle"|"loading"|"ok"|"err">("idle");
   const [missingMsg, setMissingMsg]               = useState("");
+  const [durStatus, setDurStatus]                 = useState<"idle"|"loading"|"ok"|"err">("idle");
+  const [durMsg, setDurMsg]                       = useState("");
   const [channelsList, setChannelsList]   = useState<string[]>([]);
 
   useEffect(() => {
@@ -1329,6 +1331,23 @@ function ToolsTab({ token }: { token: string }) {
     } catch (e: unknown) {
       setMissingStatus("err");
       setMissingMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
+    }
+  }
+
+  async function doRefreshDurations() {
+    if (!confirm("Récupérer les durées manquantes (matinales détectées en live) ?")) return;
+    setDurStatus("loading"); setDurMsg("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/refresh-durations`, {
+        method: "POST", headers: authHeaders(token),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail);
+      setDurStatus("ok");
+      setDurMsg(`✓ ${data.message}`);
+    } catch (e: unknown) {
+      setDurStatus("err");
+      setDurMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
     }
   }
 
@@ -1396,6 +1415,35 @@ function ToolsTab({ token }: { token: string }) {
         {missingMsg && (
           <p className="text-xs mt-3 px-1" style={{ color: missingStatus === "ok" ? "#1565c0" : "var(--accent)" }}>
             {missingMsg}
+          </p>
+        )}
+      </div>
+
+      {/* Durées manquantes */}
+      <div style={{ border: "1px solid #7b1fa2", padding: "20px 24px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Durées manquantes — FIN et DURÉE absentes
+        </p>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Récupère la durée réelle pour les matinales avec <strong>FIN / DURÉE = —</strong>.
+          Cause : vidéos capturées pendant le live (YouTube retourne P0D), puis terminées.
+        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <button
+            onClick={doRefreshDurations}
+            disabled={durStatus === "loading"}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-opacity hover:opacity-80"
+            style={{ background: "#7b1fa2", color: "white" }}>
+            {durStatus === "loading" ? "Récupération en cours…" : "⏱ Récupérer les durées manquantes"}
+          </button>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            1 appel YouTube par tranche de 50 vidéos (contentDetails uniquement).
+          </span>
+        </div>
+        {durMsg && (
+          <p className="text-xs mt-3 px-1" style={{ color: durStatus === "ok" ? "#7b1fa2" : "var(--accent)" }}>
+            {durMsg}
           </p>
         )}
       </div>

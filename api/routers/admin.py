@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
 
 from database import query, execute
-from refresh import do_refresh_today, do_refresh_smart, do_refresh_missing
+from refresh import do_refresh_today, do_refresh_smart, do_refresh_missing, do_refresh_missing_durations
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -598,6 +598,24 @@ def refresh_missing_snapshots(x_admin_token: str = Header(default="")):
             f"{count} snapshot(s) insérés pour les matinales sans vues."
             if count else
             "Toutes les matinales ont déjà au moins un snapshot."
+        ),
+    }
+
+
+@router.post("/admin/refresh-durations")
+def refresh_missing_durations(x_admin_token: str = Header(default="")):
+    """
+    Récupère la durée réelle pour les matinales avec duration_seconds NULL.
+    Typiquement : vidéos détectées en live (durée P0D), puis terminées.
+    """
+    require_admin(x_admin_token)
+    count = do_refresh_missing_durations()
+    return {
+        "updated": count,
+        "message": (
+            f"{count} durée(s) mise(s) à jour."
+            if count else
+            "Aucune durée manquante — ou les lives sont encore en cours."
         ),
     }
 
