@@ -3,9 +3,7 @@ import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, ReferenceLine,
 } from "recharts";
 import { SpecialEvent } from "@/lib/api";
-
-const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
-                 "#a30016","#4a4440","#8b0000","#555","#e53e3e"];
+import { channelColor } from "@/lib/colors";
 
 function fmt(n: number) {
   return n >= 1_000_000
@@ -100,8 +98,8 @@ export default function TimelineChart({
 
               {channels.map((ch, i) => (
                 <Line key={ch} type="monotone" dataKey={ch}
-                  stroke={COLORS[i % COLORS.length]}
-                  strokeWidth={i === 0 ? 2.5 : 1.5}
+                  stroke={channelColor(ch, i)}
+                  strokeWidth={1.5}
                   dot={false} activeDot={{ r: 3, strokeWidth: 0 }} />
               ))}
             </LineChart>
