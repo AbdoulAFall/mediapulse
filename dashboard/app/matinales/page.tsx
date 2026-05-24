@@ -1,6 +1,8 @@
 "use client";
 import { useState, useCallback, useEffect } from "react";
 import useSWR from "swr";
+import ReportModal from "@/components/ReportModal";
+import { Matinale } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -367,6 +369,7 @@ export default function MatinalesPage() {
   const [page, setPage]       = useState(1);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [reporting, setReporting] = useState<Matinale | null>(null);
   const [specialDays, setSpecialDays] = useState<
     Record<string, { reason: string; skip_collection: boolean }>
   >({});
@@ -547,11 +550,20 @@ export default function MatinalesPage() {
                       {fmt(m.like_count)}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <a href={m.youtube_url} target="_blank" rel="noopener noreferrer"
-                        className="text-xs font-bold uppercase tracking-wider hover:opacity-70"
-                        style={{ color: "var(--accent)", textDecoration: "none" }}>
-                        ▶ voir
-                      </a>
+                      <div className="flex items-center gap-3">
+                        <a href={m.youtube_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs font-bold uppercase tracking-wider hover:opacity-70"
+                          style={{ color: "var(--accent)", textDecoration: "none", letterSpacing: "0.05em" }}>
+                          ▶ voir
+                        </a>
+                        <button
+                          onClick={() => setReporting(m as unknown as Matinale)}
+                          className="text-xs font-semibold uppercase tracking-wider hover:opacity-70"
+                          style={{ color: "var(--text-muted)", letterSpacing: "0.05em" }}
+                          title="Signaler un problème avec cette vidéo">
+                          ⚑ signaler
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   );
@@ -576,6 +588,11 @@ export default function MatinalesPage() {
           MediaPulse · Données YouTube · Sync automatique lun–ven 6h–12h (UTC)
         </p>
       </footer>
+
+      {/* Modal signalement */}
+      {reporting && (
+        <ReportModal matinale={reporting} onClose={() => setReporting(null)} />
+      )}
     </div>
   );
 }
