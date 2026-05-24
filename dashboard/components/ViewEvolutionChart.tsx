@@ -5,16 +5,8 @@ import {
   CartesianGrid, Legend, BarChart, Bar, Cell,
 } from "recharts";
 import { MatinaleEvolution } from "@/lib/api";
+import { channelColor } from "@/lib/colors";
 
-const CHANNEL_COLORS: Record<string, string> = {
-  "TFM":         "#d0021b",
-  "RTS":         "#1a1714",
-  "2STV":        "#c0392b",
-  "Sen TV":      "#4a4440",
-  "Walf TV":     "#7a736a",
-  "Solution TV": "#8b0000",
-};
-const FALLBACK_COLORS = ["#333", "#555", "#777", "#999"];
 
 type Mode = "cumul" | "delta";
 
@@ -28,10 +20,6 @@ function fmt(n: number) {
 
 function fmtDelta(n: number) {
   return (n >= 0 ? "+" : "") + fmt(Math.abs(n));
-}
-
-function channelColor(name: string, idx: number): string {
-  return CHANNEL_COLORS[name] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
 }
 
 // ── Construction des données pour le mode CUMULÉ ────────────────────────────

@@ -6,18 +6,9 @@ import {
   CartesianGrid, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import PeriodSelector, { Period, periodToParams } from "@/components/PeriodSelector";
+import { channelColor } from "@/lib/colors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-const CHANNEL_COLORS: Record<string, string> = {
-  "TFM":         "#d0021b",
-  "RTS":         "#1a1714",
-  "2STV":        "#c0392b",
-  "Sen TV":      "#4a4440",
-  "Walf TV":     "#7a736a",
-  "Solution TV": "#8b0000",
-};
-const FALLBACK = "#333";
 
 function fmt(n: number | null) {
   if (!n) return "—";
@@ -101,7 +92,7 @@ function StatCard({ label, value, sub, color }: {
 export default function EmissionPage({ params }: { params: Promise<{ channel: string }> }) {
   const { channel: channelSlug } = use(params);
   const channel = decodeURIComponent(channelSlug);
-  const color   = CHANNEL_COLORS[channel] ?? FALLBACK;
+  const color   = channelColor(channel);
 
   const [period, setPeriod] = useState<Period>({ days: 60, year: null });
   const pq = periodToParams(period);

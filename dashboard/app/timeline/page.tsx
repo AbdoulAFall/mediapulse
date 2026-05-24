@@ -7,24 +7,9 @@ import {
   XAxis, YAxis, Tooltip, CartesianGrid,
   Legend, ResponsiveContainer, ReferenceLine,
 } from "recharts";
+import { channelColor } from "@/lib/colors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-// ── Couleurs ──────────────────────────────────────────────────────────────────
-const CHANNEL_COLORS: Record<string, string> = {
-  "TFM":            "#d0021b",
-  "RTS":            "#1a1714",
-  "2STV":           "#c0392b",
-  "Sen TV":         "#4a4440",
-  "Walf TV":        "#7a736a",
-  "Solution TV":    "#8b0000",
-  "Eric Favre TV":  "#e67e22",
-};
-const FALLBACK_COLORS = ["#333", "#666", "#999", "#bbb", "#e53e3e", "#a30016"];
-
-function channelColor(name: string, idx: number) {
-  return CHANNEL_COLORS[name] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
-}
 
 // ── Périodes ──────────────────────────────────────────────────────────────────
 const PERIODS = [

@@ -3,9 +3,7 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { ChannelStats } from "@/lib/api";
-
-const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
-                "#a30016","#4a4440","#8b0000","#555","#333"];
+import { channelColor } from "@/lib/colors";
 
 function fmt(n: number) {
   return n >= 1_000_000
@@ -90,8 +88,8 @@ export default function ShareChart({ channels }: { channels: ChannelStats[] }) {
               labelLine={false}
               label={CustomLabel as (props: unknown) => JSX.Element | null}
             >
-              {data.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />
+              {data.map((entry, i) => (
+                <Cell key={i} fill={channelColor(entry.name, i)} stroke="none" />
               ))}
             </Pie>
             <Tooltip content={<CustomTooltip />} />

@@ -7,23 +7,9 @@ import {
   Legend, ResponsiveContainer,
 } from "recharts";
 import { MatinaleEvolution, ViewSnapshot } from "@/lib/api";
+import { channelColor } from "@/lib/colors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
-// ── Couleurs par chaîne ────────────────────────────────────────────────────────
-const CHANNEL_COLORS: Record<string, string> = {
-  "TFM":         "#d0021b",
-  "RTS":         "#1a1714",
-  "2STV":        "#c0392b",
-  "Sen TV":      "#4a4440",
-  "Walf TV":     "#7a736a",
-  "Solution TV": "#8b0000",
-};
-const FALLBACK_COLORS = ["#333", "#666", "#999", "#bbb"];
-
-function channelColor(name: string, idx: number) {
-  return CHANNEL_COLORS[name] ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
-}
 
 // ── Formatage ─────────────────────────────────────────────────────────────────
 function fmt(n: number | null) {

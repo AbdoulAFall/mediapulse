@@ -1,12 +1,10 @@
 "use client";
 import { ScheduleEntry } from "@/lib/api";
+import { channelColor } from "@/lib/colors";
 
 const RANGE_START = 6 * 60;
 const RANGE_END   = 12 * 60 + 30;
 const RANGE       = RANGE_END - RANGE_START;
-
-const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
-                 "#a30016","#4a4440","#8b0000","#555","#e53e3e"];
 
 const TICKS = Array.from({ length: Math.floor(RANGE / 30) + 1 }, (_, i) => {
   const min = RANGE_START + i * 30;
@@ -76,7 +74,7 @@ export default function ScheduleGuide({ data }: { data: ScheduleEntry[] }) {
 
               {/* Barre chaîne */}
               {data.map((entry, i) => {
-                const color    = COLORS[i % COLORS.length];
+                const color    = channelColor(entry.channel, i);
                 const startPct = pct(entry.avg_start_min);
                 const widthPct = Math.max(1, pct(entry.avg_end_min) - startPct);
 
