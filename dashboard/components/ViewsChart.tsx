@@ -3,9 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList,
 } from "recharts";
 import { ChannelStats } from "@/lib/api";
-
-const COLORS = ["#d0021b","#1a1714","#7a736a","#c0392b","#2c2c2c",
-                 "#a30016","#4a4440","#8b0000","#555","#333"];
+import { channelColor } from "@/lib/colors";
 
 function fmt(n: number) {
   return n >= 1_000_000
@@ -66,8 +64,8 @@ export default function ViewsChart({ channels }: { channels: ChannelStats[] }) {
               cursor={{ fill: "var(--surface2)" }}
             />
             <Bar dataKey={dataKey} radius={0} maxBarSize={26}>
-              {channels.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              {channels.map((c, i) => (
+                <Cell key={i} fill={channelColor(c.name, i)} />
               ))}
               <LabelList
                 dataKey={dataKey}

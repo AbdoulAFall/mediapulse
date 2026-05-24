@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Matinale } from "@/lib/api";
 import ReportModal from "@/components/ReportModal";
+import { channelColor } from "@/lib/colors";
 
 type SortKey = "published_at" | "view_count" | "like_count" | "duration_seconds";
 
@@ -116,7 +117,7 @@ export default function MatinalesTable({ matinales }: { matinales: Matinale[] })
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="text-xs font-bold px-2 py-0.5"
-                      style={{ background: "var(--ink)", color: "white" }}>
+                      style={{ background: channelColor(m.channel), color: "white" }}>
                       {m.channel}
                     </span>
                   </td>

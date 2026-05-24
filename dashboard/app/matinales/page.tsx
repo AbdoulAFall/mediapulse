@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect } from "react";
 import useSWR from "swr";
 import ReportModal from "@/components/ReportModal";
 import { Matinale } from "@/lib/api";
+import { channelColor } from "@/lib/colors";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -522,7 +523,7 @@ export default function MatinalesPage() {
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-xs font-bold px-2 py-0.5"
-                        style={{ background: "var(--ink)", color: "white" }}>
+                        style={{ background: channelColor(m.channel), color: "white" }}>
                         {m.channel}
                       </span>
                     </td>
