@@ -89,6 +89,27 @@ def do_refresh_today(force: bool = False) -> int:
     return _fetch_and_insert(rows)
 
 
+def do_refresh_missing() -> int:
+    """
+    Refresh one-shot pour les matinales sans aucun snapshot (quel que soit leur âge).
+    Typiquement utilisé après un backfill ou l'ajout d'une nouvelle chaîne.
+    Pas de limite de date — cible uniquement les vidéos avec 0 snapshot.
+    """
+    if not YT_KEY:
+        return 0
+
+    rows = query("""
+        SELECT m.id, m.youtube_video_id
+        FROM matinales m
+        WHERE NOT EXISTS (
+            SELECT 1 FROM view_snapshots vs WHERE vs.matinale_id = m.id
+        )
+        ORDER BY m.published_at DESC
+    """)
+
+    return _fetch_and_insert(rows)
+
+
 def do_refresh_smart(force: bool = False) -> int:
     """
     Refresh 3 vitesses : J0–J3 (6h), J4–J30 (24h), J31+ ignoré.

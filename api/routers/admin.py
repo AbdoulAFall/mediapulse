@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
 
 from database import query, execute
-from refresh import do_refresh_today, do_refresh_smart
+from refresh import do_refresh_today, do_refresh_smart, do_refresh_missing
 
 router = APIRouter(prefix="/api", tags=["admin"])
 
@@ -582,6 +582,25 @@ def send_report_now(body: ReportSendBody = ReportSendBody(), x_admin_token: str 
 
 
 # ── Admin : Refresh manuel (test) ────────────────────────────────────────────
+
+@router.post("/admin/refresh-missing")
+def refresh_missing_snapshots(x_admin_token: str = Header(default="")):
+    """
+    Insère un snapshot pour toutes les matinales sans aucune vue enregistrée.
+    Utile après un backfill ou l'ajout d'une nouvelle chaîne (ex : Eric Favre TV).
+    Aucune limite de date — cible uniquement les vidéos avec 0 snapshot.
+    """
+    require_admin(x_admin_token)
+    count = do_refresh_missing()
+    return {
+        "inserted": count,
+        "message": (
+            f"{count} snapshot(s) insérés pour les matinales sans vues."
+            if count else
+            "Toutes les matinales ont déjà au moins un snapshot."
+        ),
+    }
+
 
 @router.post("/admin/refresh-now")
 def refresh_now(x_admin_token: str = Header(default="")):

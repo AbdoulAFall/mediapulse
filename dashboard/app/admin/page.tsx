@@ -1302,8 +1302,10 @@ function ToolsTab({ token }: { token: string }) {
   const [detectChannel, setDetectChannel] = useState("");
   const [detectStatus, setDetectStatus]   = useState<"idle"|"loading"|"ok"|"err">("idle");
   const [detectMsg, setDetectMsg]         = useState("");
-  const [refreshStatus, setRefreshStatus] = useState<"idle"|"loading"|"ok"|"err">("idle");
-  const [refreshMsg, setRefreshMsg]       = useState("");
+  const [refreshStatus, setRefreshStatus]         = useState<"idle"|"loading"|"ok"|"err">("idle");
+  const [refreshMsg, setRefreshMsg]               = useState("");
+  const [missingStatus, setMissingStatus]         = useState<"idle"|"loading"|"ok"|"err">("idle");
+  const [missingMsg, setMissingMsg]               = useState("");
   const [channelsList, setChannelsList]   = useState<string[]>([]);
 
   useEffect(() => {
@@ -1312,6 +1314,23 @@ function ToolsTab({ token }: { token: string }) {
       .then((data: { name: string }[]) => setChannelsList(data.map((c) => c.name)))
       .catch(() => {});
   }, []);
+
+  async function doRefreshMissing() {
+    if (!confirm("Récupérer les vues pour toutes les matinales sans snapshot (pas de limite de date) ?")) return;
+    setMissingStatus("loading"); setMissingMsg("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/refresh-missing`, {
+        method: "POST", headers: authHeaders(token),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail);
+      setMissingStatus("ok");
+      setMissingMsg(`✓ ${data.message}`);
+    } catch (e: unknown) {
+      setMissingStatus("err");
+      setMissingMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
+    }
+  }
 
   async function doRefreshNow() {
     if (!confirm("Déclencher un refresh immédiat des vues (bypass plage horaire) ?")) return;
@@ -1351,6 +1370,35 @@ function ToolsTab({ token }: { token: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+
+      {/* Refresh vues manquantes */}
+      <div style={{ border: "1px solid #1565c0", padding: "20px 24px" }}>
+        <p className="text-xs font-bold uppercase tracking-widest mb-1"
+          style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
+          Vues manquantes — initialisation historique
+        </p>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Récupère les vues YouTube pour toutes les matinales qui n&apos;ont <strong>aucun snapshot</strong>, sans limite de date.
+          Idéal après un backfill ou l&apos;ajout d&apos;une nouvelle chaîne.
+        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <button
+            onClick={doRefreshMissing}
+            disabled={missingStatus === "loading"}
+            className="px-5 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 transition-opacity hover:opacity-80"
+            style={{ background: "#1565c0", color: "white" }}>
+            {missingStatus === "loading" ? "Récupération en cours…" : "↓ Récupérer les vues manquantes"}
+          </button>
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+            Une requête YouTube par tranche de 50 vidéos.
+          </span>
+        </div>
+        {missingMsg && (
+          <p className="text-xs mt-3 px-1" style={{ color: missingStatus === "ok" ? "#1565c0" : "var(--accent)" }}>
+            {missingMsg}
+          </p>
+        )}
+      </div>
 
       {/* Refresh manuel */}
       <div style={{ border: "1px solid #2e7d32", padding: "20px 24px" }}>
