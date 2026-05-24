@@ -387,9 +387,10 @@ def get_views_evolution(date: str | None = Query(None)):
 
 @router.get("/events")
 def get_events():
-    """Jours spéciaux (depuis excluded_days) pour annotation sur les graphiques."""
+    """Jours spéciaux (depuis excluded_days) pour annotation sur les graphiques et tooltips."""
     rows = query("""
-        SELECT date::text AS date, reason
+        SELECT date::text AS date, reason,
+               COALESCE(skip_collection, true) AS skip_collection
         FROM excluded_days
         WHERE reason IS NOT NULL AND reason != ''
         ORDER BY date

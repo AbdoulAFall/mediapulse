@@ -65,11 +65,17 @@ def init_db():
             """)
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS excluded_days (
-                    id         SERIAL PRIMARY KEY,
-                    date       DATE UNIQUE NOT NULL,
-                    reason     TEXT,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
+                    id               SERIAL PRIMARY KEY,
+                    date             DATE UNIQUE NOT NULL,
+                    reason           TEXT,
+                    skip_collection  BOOLEAN DEFAULT true,
+                    created_at       TIMESTAMPTZ DEFAULT NOW()
                 );
+            """)
+            # Migration idempotente — colonne ajoutée en v2
+            cur.execute("""
+                ALTER TABLE excluded_days
+                ADD COLUMN IF NOT EXISTS skip_collection BOOLEAN DEFAULT true
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_matinales_channel ON matinales(channel_id);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_matinales_published ON matinales(published_at);")
@@ -399,11 +405,11 @@ def get_matinale_ids_tiered() -> list:
 
 
 def is_excluded_day(day_str: str) -> bool:
-    """Vérifie si le jour est exclu manuellement (table excluded_days)."""
+    """Vérifie si le jour est exclu de la collecte (skip_collection = true)."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT 1 FROM excluded_days WHERE date = %s::date",
+                "SELECT 1 FROM excluded_days WHERE date = %s::date AND skip_collection = true",
                 (day_str,)
             )
             return cur.fetchone() is not None

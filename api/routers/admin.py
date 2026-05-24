@@ -43,8 +43,9 @@ class ReportPatch(BaseModel):
     status: str  # resolved | ignored
 
 class ExcludedDayCreate(BaseModel):
-    date: str            # YYYY-MM-DD
-    reason: Optional[str] = None
+    date:             str             # YYYY-MM-DD
+    reason:           Optional[str] = None
+    skip_collection:  bool = True     # False = fête info uniquement (tooltip), collecte maintenue
 
 class MatinaleAdd(BaseModel):
     channel_id: int
@@ -308,7 +309,18 @@ def add_matinale(body: MatinaleAdd, x_admin_token: str = Header(default="")):
 @router.get("/admin/excluded-days")
 def list_excluded_days(x_admin_token: str = Header(default="")):
     require_admin(x_admin_token)
-    return query("SELECT id, date, reason, created_at FROM excluded_days ORDER BY date DESC")
+    # Migration idempotente
+    try:
+        execute("ALTER TABLE excluded_days ADD COLUMN IF NOT EXISTS skip_collection BOOLEAN DEFAULT true")
+    except Exception:
+        pass
+    return query("""
+        SELECT id, date, reason,
+               COALESCE(skip_collection, true) AS skip_collection,
+               created_at
+        FROM excluded_days
+        ORDER BY date DESC
+    """)
 
 
 @router.post("/admin/excluded-days", status_code=201)
@@ -319,12 +331,16 @@ def add_excluded_day(body: ExcludedDayCreate, x_admin_token: str = Header(defaul
     except ValueError:
         raise HTTPException(status_code=400, detail="Format invalide — utiliser YYYY-MM-DD.")
     try:
+        execute("ALTER TABLE excluded_days ADD COLUMN IF NOT EXISTS skip_collection BOOLEAN DEFAULT true")
+    except Exception:
+        pass
+    try:
         execute(
-            "INSERT INTO excluded_days (date, reason) VALUES (%s, %s)",
-            (body.date, body.reason),
+            "INSERT INTO excluded_days (date, reason, skip_collection) VALUES (%s, %s, %s)",
+            (body.date, body.reason, body.skip_collection),
         )
     except Exception:
-        raise HTTPException(status_code=409, detail="Ce jour est déjà exclu.")
+        raise HTTPException(status_code=409, detail="Ce jour est déjà enregistré.")
     return {"ok": True}
 
 

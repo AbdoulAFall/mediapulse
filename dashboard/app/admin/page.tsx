@@ -33,6 +33,7 @@ interface ExcludedDay {
   id: number;
   date: string;
   reason: string | null;
+  skip_collection: boolean;  // true = jour exclu (rouge), false = fête info uniquement (orange)
   created_at: string;
 }
 
@@ -533,11 +534,12 @@ function getDayShort(dateStr: string) {
   return FR_DAYS_SHORT[new Date(dateStr + "T12:00:00Z").getUTCDay()];
 }
 
-/** Génère tous les jours exclus d'une année (weekends + exclusions manuelles) */
+/** Génère tous les jours notables d'une année (weekends + jours enregistrés) */
 function buildYearExclusions(
   year: number,
   manualDays: ExcludedDay[],
-): { date: string; type: "weekend" | "manual"; reason: string | null; id?: number }[] {
+): { date: string; type: "weekend" | "excluded" | "feast"; reason: string | null; id?: number }[] {
+  // "excluded" = skip_collection true (rouge), "feast" = skip_collection false (orange)
   const manualMap = Object.fromEntries(
     manualDays.filter((d) => !isWeekend(d.date)).map((d) => [d.date, d])
   );
@@ -551,7 +553,8 @@ function buildYearExclusions(
         result.push({ date: dateStr, type: "weekend" as const, reason: "Week-end" });
       } else if (manualMap[dateStr]) {
         const entry = manualMap[dateStr];
-        result.push({ date: dateStr, type: "manual" as const, reason: entry.reason, id: entry.id });
+        const type  = entry.skip_collection !== false ? "excluded" : "feast";
+        result.push({ date: dateStr, type: type as "excluded" | "feast", reason: entry.reason, id: entry.id });
       }
     }
   }
@@ -560,13 +563,14 @@ function buildYearExclusions(
 
 function ExcludedDaysTab({ token }: { token: string }) {
   const currentYear = new Date().getFullYear();
-  const [manualDays, setManualDays] = useState<ExcludedDay[]>([]);
-  const [loading, setLoading]       = useState(false);
-  const [year, setYear]             = useState(currentYear);
-  const [date, setDate]             = useState("");
-  const [reason, setReason]         = useState("");
-  const [adding, setAdding]         = useState(false);
-  const [showForm, setShowForm]     = useState(false);
+  const [manualDays, setManualDays]       = useState<ExcludedDay[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [year, setYear]                   = useState(currentYear);
+  const [date, setDate]                   = useState("");
+  const [reason, setReason]               = useState("");
+  const [skipCollection, setSkipCollection] = useState(true);
+  const [adding, setAdding]               = useState(false);
+  const [showForm, setShowForm]           = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -593,10 +597,10 @@ function ExcludedDaysTab({ token }: { token: string }) {
     try {
       const r = await fetch(`${API_URL}/api/admin/excluded-days`, {
         method: "POST", headers: authHeaders(token),
-        body: JSON.stringify({ date, reason: reason.trim() }),
+        body: JSON.stringify({ date, reason: reason.trim(), skip_collection: skipCollection }),
       });
       if (!r.ok) throw new Error((await r.json()).detail);
-      setDate(""); setReason(""); setShowForm(false);
+      setDate(""); setReason(""); setSkipCollection(true); setShowForm(false);
       load();
     } catch (err: unknown) {
       alert(`Erreur : ${err instanceof Error ? err.message : "Erreur"}`);
@@ -611,9 +615,11 @@ function ExcludedDaysTab({ token }: { token: string }) {
     load();
   }
 
-  const allExclusions = buildYearExclusions(year, manualDays);
-  const totalWeekends = allExclusions.filter((d) => d.type === "weekend").length;
-  const manualWeekdays = allExclusions.filter((d) => d.type === "manual");
+  const allExclusions  = buildYearExclusions(year, manualDays);
+  const totalWeekends  = allExclusions.filter((d) => d.type === "weekend").length;
+  const excludedDays   = allExclusions.filter((d) => d.type === "excluded");
+  const feastDays      = allExclusions.filter((d) => d.type === "feast");
+  const manualWeekdays = [...excludedDays, ...feastDays];
 
   // Groupé par mois
   const byMonth: typeof allExclusions[] = Array.from({ length: 12 }, (_, m) =>
@@ -645,9 +651,15 @@ function ExcludedDaysTab({ token }: { token: string }) {
         <div className="flex items-center gap-4 text-xs" style={{ color: "var(--text-muted)" }}>
           <span><strong style={{ color: "var(--ink)" }}>{totalWeekends}</strong> week-ends</span>
           <span>+</span>
-          <span><strong style={{ color: "var(--accent)" }}>{manualWeekdays.length}</strong> jours fériés</span>
+          <span><strong style={{ color: "var(--accent)" }}>{excludedDays.length}</strong> exclus</span>
+          {feastDays.length > 0 && (
+            <>
+              <span>+</span>
+              <span><strong style={{ color: "#f59e0b" }}>{feastDays.length}</strong> fêtes info</span>
+            </>
+          )}
           <span>=</span>
-          <span><strong style={{ color: "var(--ink)" }}>{allExclusions.length}</strong> jours exclus</span>
+          <span><strong style={{ color: "var(--ink)" }}>{totalWeekends + excludedDays.length}</strong> jours sans collecte</span>
         </div>
 
         {/* Bouton ajouter */}
@@ -662,10 +674,10 @@ function ExcludedDaysTab({ token }: { token: string }) {
       {showForm && (
         <div style={{ border: "1px solid var(--border)", padding: "16px 20px", background: "var(--surface)" }}>
           <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
-            Exclure un jour en semaine
+            Ajouter un jour notable
           </p>
           <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
-            Le motif s&apos;affiche sur la timeline au survol. Les week-ends sont exclus automatiquement.
+            Le motif s&apos;affiche en tooltip sur les tableaux et la timeline. Les week-ends sont exclus automatiquement.
           </p>
           <form onSubmit={doAdd} className="flex flex-wrap gap-3 items-end">
             <div>
@@ -681,24 +693,43 @@ function ExcludedDaysTab({ token }: { token: string }) {
             </div>
             <div className="flex-1" style={{ minWidth: 200 }}>
               <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
-                Motif * <span style={{ fontWeight: 400 }}>(visible sur la timeline)</span>
+                Motif * <span style={{ fontWeight: 400 }}>(visible en tooltip)</span>
               </label>
               <input type="text" value={reason} onChange={(e) => setReason(e.target.value)}
                 placeholder="Ex : Lundi de Pâques, Tabaski, Magal…"
                 className="w-full text-xs p-2 outline-none"
                 style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }} />
             </div>
+            {/* Checkbox Exclure de la collecte */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-bold" style={{ color: "var(--text-muted)" }}>Comportement</label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer select-none"
+                style={{ color: skipCollection ? "var(--accent)" : "#f59e0b", fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={skipCollection}
+                  onChange={(e) => setSkipCollection(e.target.checked)}
+                  style={{ accentColor: skipCollection ? "var(--accent)" : "#f59e0b" }}
+                />
+                {skipCollection ? "🔴 Exclure de la collecte" : "🟠 Fête info (collecte maintenue)"}
+              </label>
+              <p className="text-xs" style={{ color: "var(--text-muted)", maxWidth: 240 }}>
+                {skipCollection
+                  ? "Aucune matinale attendue ce jour."
+                  : "Certaines TV diffusent, tooltip affiché uniquement."}
+              </p>
+            </div>
             <button type="submit" disabled={!date || !reason.trim() || adding || isWeekend(date)}
               className="px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
               style={{ background: "var(--ink)", color: "white" }}>
-              {adding ? "…" : "+ Exclure"}
+              {adding ? "…" : "+ Ajouter"}
             </button>
           </form>
         </div>
       )}
 
       {/* Légende */}
-      <div className="flex items-center gap-5 text-xs" style={{ color: "var(--text-muted)" }}>
+      <div className="flex flex-wrap items-center gap-5 text-xs" style={{ color: "var(--text-muted)" }}>
         <div className="flex items-center gap-2">
           <span className="inline-block px-2 py-0.5 font-bold"
             style={{ background: "#f0ede8", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
@@ -709,9 +740,16 @@ function ExcludedDaysTab({ token }: { token: string }) {
         <div className="flex items-center gap-2">
           <span className="inline-block px-2 py-0.5 font-bold"
             style={{ background: "#fdecea", border: "1px solid var(--accent)", color: "var(--accent)" }}>
-            Jour férié
+            🔴 Jour exclu
           </span>
-          <span>Exclusion manuelle · visible sur la timeline</span>
+          <span>Collecte bloquée · tooltip rouge dans le dashboard</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-block px-2 py-0.5 font-bold"
+            style={{ background: "#fffbeb", border: "1px solid #f59e0b", color: "#b45309" }}>
+            🟠 Fête info
+          </span>
+          <span>Collecte maintenue · tooltip orange dans le dashboard</span>
         </div>
       </div>
 
@@ -729,42 +767,52 @@ function ExcludedDaysTab({ token }: { token: string }) {
                     {FR_MONTHS[m]} {year}
                   </span>
                   <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-                    {entries.filter((e) => e.type === "manual").length > 0 && (
+                    {entries.filter((e) => e.type === "excluded").length > 0 && (
                       <span style={{ color: "var(--accent)", fontWeight: 700 }}>
-                        {entries.filter((e) => e.type === "manual").length} férié{entries.filter((e) => e.type === "manual").length > 1 ? "s" : ""} ·{" "}
+                        {entries.filter((e) => e.type === "excluded").length}🔴{" "}
+                      </span>
+                    )}
+                    {entries.filter((e) => e.type === "feast").length > 0 && (
+                      <span style={{ color: "#f59e0b", fontWeight: 700 }}>
+                        {entries.filter((e) => e.type === "feast").length}🟠{" "}
                       </span>
                     )}
                     {entries.filter((e) => e.type === "weekend").length} W-E
                   </span>
                 </div>
 
-                {/* Chips des jours exclus */}
+                {/* Chips des jours */}
                 <div className="p-3 flex flex-wrap gap-1.5">
                   {entries.length === 0 ? (
-                    <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>Aucun jour exclu</span>
-                  ) : entries.map((entry) => (
-                    entry.type === "weekend" ? (
+                    <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>Aucun jour notable</span>
+                  ) : entries.map((entry) => {
+                    if (entry.type === "weekend") return (
                       <span key={entry.date}
                         className="text-xs px-2 py-0.5 font-mono"
                         style={{ background: "#f0ede8", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
                         {getDayShort(entry.date)} {parseInt(entry.date.split("-")[2])}
                       </span>
-                    ) : (
+                    );
+                    const isExcluded = entry.type === "excluded";
+                    const bg          = isExcluded ? "#fdecea" : "#fffbeb";
+                    const borderColor = isExcluded ? "var(--accent)" : "#f59e0b";
+                    const textColor   = isExcluded ? "var(--accent)" : "#b45309";
+                    return (
                       <span key={entry.date}
                         className="text-xs px-2 py-0.5 font-semibold flex items-center gap-1"
-                        style={{ background: "#fdecea", border: "1px solid var(--accent)", color: "var(--accent)" }}
+                        style={{ background: bg, border: `1px solid ${borderColor}`, color: textColor }}
                         title={entry.reason ?? ""}>
-                        {getDayShort(entry.date)} {parseInt(entry.date.split("-")[2])} · {entry.reason}
+                        {isExcluded ? "🔴" : "🟠"} {getDayShort(entry.date)} {parseInt(entry.date.split("-")[2])} · {entry.reason}
                         <button
                           onClick={() => entry.id && doDelete(entry.id)}
                           className="ml-1 font-bold leading-none hover:opacity-60"
                           style={{ fontSize: 10, lineHeight: 1 }}
-                          title="Retirer cette exclusion">
+                          title="Retirer ce jour">
                           ✕
                         </button>
                       </span>
-                    )
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

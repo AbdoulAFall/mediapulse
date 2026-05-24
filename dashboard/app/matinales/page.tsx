@@ -305,6 +305,61 @@ function Pagination({ page, pages, onChange }: {
   );
 }
 
+// ── Tooltip jour notable (exclu = rouge, fête info = orange) ─────────────
+
+function SpecialDateCell({
+  isoDate, reason, skipCollection,
+}: {
+  isoDate: string;
+  reason: string;
+  skipCollection: boolean;
+}) {
+  const [show, setShow] = useState(false);
+  const label  = new Date(isoDate).toLocaleDateString("fr-FR", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  });
+  const color  = skipCollection ? "var(--accent)" : "#f59e0b";   // rouge ou orange
+  const icon   = skipCollection ? "🔴" : "🟠";
+
+  return (
+    <span
+      style={{ position: "relative", display: "inline-block" }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      <span style={{
+        color,
+        borderBottom: "1px dashed currentColor",
+        cursor:       "default",
+        fontFamily:   "monospace",
+        fontSize:     12,
+        fontWeight:   600,
+      }}>
+        {label}
+      </span>
+      {show && (
+        <span style={{
+          position:      "absolute",
+          bottom:        "calc(100% + 6px)",
+          left:          "50%",
+          transform:     "translateX(-50%)",
+          background:    "var(--ink)",
+          color:         "white",
+          padding:       "5px 10px",
+          fontSize:      11,
+          whiteSpace:    "nowrap",
+          pointerEvents: "none",
+          zIndex:        50,
+          fontWeight:    600,
+          letterSpacing: "0.04em",
+        }}>
+          {icon} {label.slice(0, 5)} · {reason}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // ── Page principale ────────────────────────────────────────────────────────
 
 export default function MatinalesPage() {
@@ -312,12 +367,27 @@ export default function MatinalesPage() {
   const [page, setPage]       = useState(1);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [exporting, setExporting] = useState(false);
+  const [specialDays, setSpecialDays] = useState<
+    Record<string, { reason: string; skip_collection: boolean }>
+  >({});
 
   // Charge les chaînes une fois
   useEffect(() => {
     fetch(`${API_URL}/api/channels`)
       .then((r) => r.json())
       .then(setChannels)
+      .catch(() => {});
+  }, []);
+
+  // Charge les jours spéciaux (jours exclus + fêtes info)
+  useEffect(() => {
+    fetch(`${API_URL}/api/events`)
+      .then((r) => r.json())
+      .then((events: { date: string; reason: string; skip_collection: boolean }[]) => {
+        const map: Record<string, { reason: string; skip_collection: boolean }> = {};
+        for (const e of events) map[e.date] = { reason: e.reason, skip_collection: e.skip_collection ?? true };
+        setSpecialDays(map);
+      })
       .catch(() => {});
   }, []);
 
@@ -431,7 +501,10 @@ export default function MatinalesPage() {
                     </td>
                   </tr>
                 )}
-                {data?.items.map((m, i) => (
+                {data?.items.map((m, i) => {
+                  const dateStr   = m.published_at.slice(0, 10);
+                  const special   = specialDays[dateStr];
+                  return (
                   <tr key={m.id}
                     style={{
                       borderBottom: "1px solid var(--border)",
@@ -440,7 +513,9 @@ export default function MatinalesPage() {
                     className="hover:opacity-75 transition-opacity">
                     <td className="px-4 py-3 whitespace-nowrap text-xs font-mono"
                       style={{ color: "var(--text-muted)" }}>
-                      {new Date(m.published_at).toLocaleDateString("fr-FR")}
+                      {special
+                        ? <SpecialDateCell isoDate={m.published_at} reason={special.reason} skipCollection={special.skip_collection} />
+                        : new Date(m.published_at).toLocaleDateString("fr-FR")}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <span className="text-xs font-bold px-2 py-0.5"
@@ -479,7 +554,8 @@ export default function MatinalesPage() {
                       </a>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
