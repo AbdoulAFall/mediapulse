@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import asyncio
 import concurrent.futures
@@ -11,6 +12,11 @@ from fastapi.responses import JSONResponse
 from routers import stats, admin
 from database import execute, query
 from refresh import do_refresh_today, do_refresh_smart, do_refresh_missing_durations
+
+# Rend les modules du collector accessibles (même repo, Railway déploie depuis la racine)
+_COLLECTOR_PATH = os.path.join(os.path.dirname(__file__), "..", "collector")
+if os.path.isdir(_COLLECTOR_PATH) and _COLLECTOR_PATH not in sys.path:
+    sys.path.insert(0, os.path.abspath(_COLLECTOR_PATH))
 
 YT_KEY        = os.environ.get("YOUTUBE_API_KEY", "")
 YT_BASE       = "https://www.googleapis.com/youtube/v3"
@@ -29,6 +35,13 @@ _REFRESH_END_H      = 14
 _REFRESH_TODAY_S    = 15 * 60   # toutes les 15 min
 _REFRESH_SMART_S    = 30 * 60   # toutes les 30 min
 _REPORT_HOUR_UTC    = 16        # rapport email à 16h00 UTC
+
+# Détection (migré depuis GitHub Actions → Railway pour fiabilité)
+_DETECT_START_H     = 5         # 5h UTC — même fenêtre que detect.yml
+_DETECT_END_H       = 13        # 13h UTC
+_DETECT_LIVE_START_H = 6        # 6h UTC — même fenêtre que detect-live.yml
+_DETECT_LIVE_END_H  = 10        # 10h UTC
+_DETECT_S           = 30 * 60   # toutes les 30 min
 
 
 def _init_tables():
@@ -156,7 +169,11 @@ def _seconds_until(hour: int) -> float:
 # Executor dédié aux boucles background — séparé du pool FastAPI pour ne pas
 # bloquer les routes HTTP quand refresh/report tournent en parallèle.
 _BG_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=2, thread_name_prefix="mediapulse-bg"
+    max_workers=3, thread_name_prefix="mediapulse-bg"
+)
+# Executor séparé pour la détection (appels YouTube API potentiellement longs)
+_DETECT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+    max_workers=1, thread_name_prefix="mediapulse-detect"
 )
 
 
@@ -204,6 +221,58 @@ async def _refresh_durations_loop():
         await asyncio.sleep(60 * 60)  # toutes les heures
 
 
+async def _detect_loop():
+    """
+    Détecte les nouvelles matinales toutes les 30 min (5h–13h UTC, lun–ven).
+    Remplace le workflow GitHub Actions detect.yml.
+    """
+    await asyncio.sleep(180)  # délai initial — laisse le temps à l'API de démarrer
+    loop = asyncio.get_running_loop()
+    while True:
+        now = datetime.now(timezone.utc)
+        if now.weekday() < 5 and _DETECT_START_H <= now.hour < _DETECT_END_H:
+            def _run_detect():
+                import detector as det
+                import storage as col_storage
+                col_storage.init_db()
+                channels = det.sync_channels()
+                return det.detect_matinales(channels, days=2)
+            try:
+                n = await loop.run_in_executor(_DETECT_EXECUTOR, _run_detect)
+                if n:
+                    print(f"[detect] {n} nouvelle(s) matinale(s) — {datetime.now(timezone.utc).strftime('%H:%M UTC')}", flush=True)
+                else:
+                    print(f"[detect] Aucune nouvelle matinale — {datetime.now(timezone.utc).strftime('%H:%M UTC')}", flush=True)
+            except Exception as e:
+                print(f"[detect] Erreur : {e}", flush=True)
+        await asyncio.sleep(_DETECT_S)
+
+
+async def _detect_live_loop():
+    """
+    Détecte les lives en cours toutes les 30 min (6h–10h UTC, lun–ven).
+    Remplace le workflow GitHub Actions detect-live.yml.
+    """
+    await asyncio.sleep(210)  # décalé de 30s par rapport à detect pour éviter la contention
+    loop = asyncio.get_running_loop()
+    while True:
+        now = datetime.now(timezone.utc)
+        if now.weekday() < 5 and _DETECT_LIVE_START_H <= now.hour < _DETECT_LIVE_END_H:
+            def _run_detect_live():
+                import detector as det
+                import storage as col_storage
+                col_storage.init_db()
+                channels = det.sync_channels()
+                return det.detect_live_matinales(channels)
+            try:
+                n = await loop.run_in_executor(_DETECT_EXECUTOR, _run_detect_live)
+                if n:
+                    print(f"[detect-live] {n} live(s) détecté(s) — {datetime.now(timezone.utc).strftime('%H:%M UTC')}", flush=True)
+            except Exception as e:
+                print(f"[detect-live] Erreur : {e}", flush=True)
+        await asyncio.sleep(_DETECT_S)
+
+
 async def _report_loop():
     """Envoie le rapport email chaque jour ouvré à 13h00 UTC pile."""
     loop = asyncio.get_running_loop()
@@ -230,11 +299,14 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(_refresh_smart_loop()),
         asyncio.create_task(_refresh_durations_loop()),
         asyncio.create_task(_report_loop()),
+        asyncio.create_task(_detect_loop()),
+        asyncio.create_task(_detect_live_loop()),
     ]
     yield
     for t in tasks:
         t.cancel()
     _BG_EXECUTOR.shutdown(wait=False)
+    _DETECT_EXECUTOR.shutdown(wait=False)
     await asyncio.gather(*tasks, return_exceptions=True)
 
 

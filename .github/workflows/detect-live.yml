@@ -1,8 +1,8 @@
 name: MediaPulse — Détection lives en cours
 
 on:
-  schedule:
-    - cron: '*/30 6-10 * * 1-5'  # Toutes les 30 min, 6h–10h UTC, lun–ven
+  # Schedule désactivé — la détection live tourne désormais dans la boucle Railway (api/main.py)
+  # Conserver workflow_dispatch pour les lancements manuels (debug).
   workflow_dispatch:
 
 # Rôle : DÉCOUVERTE uniquement (trouver le video ID d'une matinale en live).

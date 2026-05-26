@@ -1,8 +1,8 @@
 name: MediaPulse — Détection matinales
 
 on:
-  schedule:
-    - cron: '*/30 5-13 * * 1-5'  # Toutes les 30 min, 5h–13h UTC, lun–ven
+  # Schedule désactivé — la détection tourne désormais dans la boucle Railway (api/main.py)
+  # Conserver workflow_dispatch pour les lancements manuels (backfill, debug).
   workflow_dispatch:
     inputs:
       days:
