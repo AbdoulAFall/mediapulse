@@ -443,6 +443,22 @@ export default function EvolutionPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold uppercase tracking-widest"
                 style={{ color: "var(--text-muted)", letterSpacing: "0.12em" }}>Chaînes</span>
+
+              {(data ?? []).length > 0 && (
+                <button
+                  onClick={() => setSelected(
+                    selected.length === (data ?? []).length ? [] : (data ?? []).map((e) => e.channel)
+                  )}
+                  className="text-xs font-semibold px-2 py-1"
+                  style={{
+                    background: selected.length === (data ?? []).length ? "var(--ink)" : "transparent",
+                    color:      selected.length === (data ?? []).length ? "white" : "var(--text-muted)",
+                    border: "1px solid var(--border)",
+                  }}>
+                  {selected.length === (data ?? []).length ? "Tout désélectionner" : "Toutes"}
+                </button>
+              )}
+
               {(data ?? []).map((ev, idx) => {
                 const active = selected.includes(ev.channel);
                 return (
