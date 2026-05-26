@@ -1483,7 +1483,8 @@ function ToolsTab({ token }: { token: string }) {
           Lancer une détection manuelle
         </p>
         <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
-          Déclenche le workflow GitHub Actions <code style={{ background: "var(--surface2)", padding: "1px 5px", fontSize: 11 }}>detect.yml</code> pour une date précise. Utile pour rattraper un jour manqué ou forcer une re-détection.
+          Déclenche le workflow GitHub Actions <code style={{ background: "var(--surface2)", padding: "1px 5px", fontSize: 11 }}>detect.yml</code> pour une date précise.
+          Utile pour rattraper un jour manqué ou forcer une re-détection en dehors de la boucle Railway automatique.
         </p>
 
         <form onSubmit={doDetect} className="flex flex-wrap items-end gap-4">
@@ -1539,23 +1540,23 @@ function ToolsTab({ token }: { token: string }) {
         )}
       </div>
 
-      {/* Info configuration requise */}
+      {/* Info architecture */}
       <div style={{ border: "1px solid var(--border)", padding: "16px 20px", background: "var(--surface2)" }}>
         <p className="text-xs font-bold uppercase tracking-widest mb-3"
           style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>
-          Prérequis côté Railway
+          Architecture de détection
         </p>
-        <div className="flex flex-col gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
+        <div className="flex flex-col gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
           <p>
-            <span className="font-mono font-bold" style={{ color: "var(--ink)" }}>GITHUB_TOKEN</span>
-            {" "}— PAT GitHub avec le scope <code style={{ background: "var(--surface)", padding: "1px 5px" }}>workflow</code>
+            <span className="font-bold" style={{ color: "var(--ink)" }}>Détection automatique</span>
+            {" "}— assurée par les boucles Railway (<code style={{ background: "var(--surface)", padding: "1px 5px" }}>_detect_loop</code> et <code style={{ background: "var(--surface)", padding: "1px 5px" }}>_detect_live_loop</code> dans <code style={{ background: "var(--surface)", padding: "1px 5px" }}>api/main.py</code>). Fiable, sans dépendance GitHub Actions.
           </p>
           <p>
-            <span className="font-mono font-bold" style={{ color: "var(--ink)" }}>GITHUB_REPO</span>
-            {" "}— ex: <code style={{ background: "var(--surface)", padding: "1px 5px" }}>AbdoulAFall/mediapulse</code>
+            <span className="font-bold" style={{ color: "var(--ink)" }}>Détection manuelle</span>
+            {" "}— via ce formulaire (déclenche <code style={{ background: "var(--surface)", padding: "1px 5px" }}>detect.yml</code> sur GitHub Actions). Nécessite les variables <code style={{ background: "var(--surface)", padding: "1px 5px" }}>GITHUB_TOKEN</code> et <code style={{ background: "var(--surface)", padding: "1px 5px" }}>GITHUB_REPO</code> dans Railway.
           </p>
-          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)", opacity: 0.7 }}>
-            Le PAT doit être créé sur <strong>github.com → Settings → Developer settings → Personal access tokens (Fine-grained)</strong>, avec accès en lecture/écriture sur les Actions du dépôt.
+          <p className="mt-1" style={{ opacity: 0.7 }}>
+            Variables Railway requises pour la détection manuelle : <strong>YOUTUBE_API_KEY</strong> (boucles auto) · <strong>GITHUB_TOKEN</strong> + <strong>GITHUB_REPO</strong> (déclenchement workflow manuel).
           </p>
         </div>
       </div>
@@ -1566,6 +1567,20 @@ function ToolsTab({ token }: { token: string }) {
 // ── Onglet Règles & Crons ──────────────────────────────────────────────────
 
 const RAILWAY_LOOPS = [
+  {
+    label: "Détection matinales",
+    schedule: "Toutes les 30 min",
+    hours: "5h00 – 13h00 UTC",
+    days: "Lun – Ven",
+    description: "Scanne la playlist YouTube de chaque chaîne et insère les nouvelles matinales terminées en base. Remplace le workflow detect.yml (migré depuis GitHub Actions pour fiabilité).",
+  },
+  {
+    label: "Détection lives en cours",
+    schedule: "Toutes les 30 min",
+    hours: "6h00 – 10h00 UTC",
+    days: "Lun – Ven",
+    description: "Détecte les matinales actuellement en live via search.list avant qu'elles soient terminées. Coût : ~100 unités YouTube/chaîne. Remplace detect-live.yml.",
+  },
   {
     label: "Refresh vues J0",
     schedule: "Toutes les 15 min",
@@ -1581,6 +1596,13 @@ const RAILWAY_LOOPS = [
     description: "J0–J3 : refresh si > 6h · J4–J30 : refresh si > 24h · J31+ : ignoré.",
   },
   {
+    label: "Durées manquantes",
+    schedule: "Toutes les heures",
+    hours: "En continu",
+    days: "Tous les jours",
+    description: "Récupère la durée réelle des matinales capturées pendant le live (YouTube retourne P0D en cours de diffusion). S'arrête automatiquement quand tout est renseigné.",
+  },
+  {
     label: "Rapport email quotidien",
     schedule: "1 fois / jour",
     hours: "16h00 UTC",
@@ -1592,21 +1614,21 @@ const RAILWAY_LOOPS = [
 const GITHUB_CRONS = [
   {
     workflow: "detect.yml",
-    label: "Détection matinales",
-    schedule: "Toutes les 30 min",
-    hours: "5h00 – 13h00 UTC",
-    days: "Lun – Ven",
+    label: "Détection matinales (backup)",
+    schedule: "Manuel uniquement",
+    hours: "—",
+    days: "—",
     command: "python main.py detect 1",
-    description: "Scanne la playlist YouTube de chaque chaîne et insère les nouveaux lives terminés.",
+    description: "⚠ Schedule désactivé — migré vers la boucle Railway pour éviter les retards GitHub Actions (jusqu'à 4h sur plan gratuit). Disponible en workflow_dispatch pour forcer une re-détection ou un backfill ponctuel.",
   },
   {
     workflow: "detect-live.yml",
-    label: "Détection lives en cours",
-    schedule: "Toutes les 30 min",
-    hours: "6h00 – 10h00 UTC",
-    days: "Lun – Ven",
+    label: "Détection lives (backup)",
+    schedule: "Manuel uniquement",
+    hours: "—",
+    days: "—",
     command: "python main.py detect_live",
-    description: "Découverte des matinales actuellement en live (avant qu'elles soient terminées). Coût : ~100 unités/chaîne via search.list.",
+    description: "⚠ Schedule désactivé — migré vers la boucle Railway. Disponible en workflow_dispatch pour les tests manuels.",
   },
   {
     workflow: "sync.yml",
