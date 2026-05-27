@@ -571,6 +571,11 @@ function ExcludedDaysTab({ token }: { token: string }) {
   const [skipCollection, setSkipCollection] = useState(true);
   const [adding, setAdding]               = useState(false);
   const [showForm, setShowForm]           = useState(false);
+  // Édition
+  const [editing, setEditing]             = useState<ExcludedDay | null>(null);
+  const [editReason, setEditReason]       = useState("");
+  const [editSkip, setEditSkip]           = useState(true);
+  const [saving, setSaving]               = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -605,6 +610,30 @@ function ExcludedDaysTab({ token }: { token: string }) {
     } catch (err: unknown) {
       alert(`Erreur : ${err instanceof Error ? err.message : "Erreur"}`);
     } finally { setAdding(false); }
+  }
+
+  function openEdit(day: ExcludedDay) {
+    setEditing(day);
+    setEditReason(day.reason ?? "");
+    setEditSkip(day.skip_collection !== false);
+  }
+
+  async function doSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/excluded-days/${editing.id}`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ reason: editReason.trim(), skip_collection: editSkip }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail);
+      setEditing(null);
+      load();
+    } catch (err: unknown) {
+      alert(`Erreur : ${err instanceof Error ? err.message : "Erreur"}`);
+    } finally { setSaving(false); }
   }
 
   async function doDelete(id: number) {
@@ -752,6 +781,149 @@ function ExcludedDaysTab({ token }: { token: string }) {
           <span>Collecte maintenue · tooltip orange dans le dashboard</span>
         </div>
       </div>
+
+      {/* Table de gestion des jours manuels */}
+      <div style={{ border: "1px solid var(--border)" }}>
+        <div className="px-5 py-3 flex items-center justify-between"
+          style={{ borderBottom: "2px solid var(--ink)", background: "var(--surface)" }}>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest"
+              style={{ color: "var(--text-muted)", letterSpacing: "0.15em" }}>Jours enregistrés</p>
+            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+              {manualWeekdays.length} jour{manualWeekdays.length > 1 ? "s" : ""} configuré{manualWeekdays.length > 1 ? "s" : ""} manuellement
+            </p>
+          </div>
+        </div>
+
+        {loading && (
+          <p className="px-5 py-4 text-xs" style={{ color: "var(--text-muted)" }}>Chargement…</p>
+        )}
+
+        {!loading && manualWeekdays.length === 0 && (
+          <p className="px-5 py-4 text-sm" style={{ color: "var(--text-muted)" }}>
+            Aucun jour configuré. Utilisez "+ Ajouter un jour férié" ci-dessus.
+          </p>
+        )}
+
+        {!loading && manualWeekdays.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: "var(--surface2)", borderBottom: "1px solid var(--border)" }}>
+                  {["Date", "Jour", "Motif", "Type", "Collecte", ""].map((h) => (
+                    <th key={h} className="px-4 py-2.5 text-left font-bold uppercase tracking-wider whitespace-nowrap"
+                      style={{ color: "var(--text-muted)", letterSpacing: "0.08em" }}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...manualWeekdays].sort((a, b) => b.date.localeCompare(a.date)).map((entry, i) => {
+                  const isExcluded = entry.type === "excluded";
+                  return (
+                    <tr key={entry.date}
+                      style={{
+                        borderBottom: "1px solid var(--border)",
+                        background: i % 2 === 0 ? "var(--surface)" : "var(--surface2)",
+                      }}>
+                      <td className="px-4 py-2.5 font-mono font-semibold whitespace-nowrap"
+                        style={{ color: "var(--ink)" }}>
+                        {fmtDate(entry.date + "T12:00:00Z")}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                        {getDayName(entry.date)}
+                      </td>
+                      <td className="px-4 py-2.5" style={{ color: "var(--ink)" }}>
+                        {entry.reason ?? <span style={{ color: "var(--text-muted)", fontStyle: "italic" }}>—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span className="px-2 py-0.5 font-bold text-xs"
+                          style={{
+                            background: isExcluded ? "#fdecea" : "#fffbeb",
+                            border: `1px solid ${isExcluded ? "var(--accent)" : "#f59e0b"}`,
+                            color: isExcluded ? "var(--accent)" : "#b45309",
+                          }}>
+                          {isExcluded ? "🔴 Exclu" : "🟠 Fête info"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <span className="font-semibold text-xs"
+                          style={{ color: isExcluded ? "var(--accent)" : "#2e7d32" }}>
+                          {isExcluded ? "Bloquée" : "Maintenue"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2.5 whitespace-nowrap">
+                        <div className="flex gap-2">
+                          <ActionBtn label="✎ Éditer" onClick={() => entry.id && openEdit(
+                            manualDays.find((d) => d.id === entry.id)!
+                          )} />
+                          <ActionBtn label="✕" onClick={() => entry.id && doDelete(entry.id)} danger />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modale d'édition */}
+      {editing && (
+        <Modal
+          title="Modifier le jour"
+          subtitle={`${getDayName(editing.date)} ${fmtDate(editing.date + "T12:00:00Z")}`}
+          onClose={() => setEditing(null)}
+        >
+          <form onSubmit={doSaveEdit} className="flex flex-col gap-4">
+            <div>
+              <label className="text-xs font-bold block mb-1" style={{ color: "var(--text-muted)" }}>
+                Motif * <span style={{ fontWeight: 400 }}>(visible en tooltip)</span>
+              </label>
+              <input
+                type="text"
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                required
+                className="w-full text-xs p-2 outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold block mb-2" style={{ color: "var(--text-muted)" }}>Comportement</label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer select-none"
+                style={{ color: editSkip ? "var(--accent)" : "#f59e0b", fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  checked={editSkip}
+                  onChange={(e) => setEditSkip(e.target.checked)}
+                  style={{ accentColor: editSkip ? "var(--accent)" : "#f59e0b" }}
+                />
+                {editSkip ? "🔴 Exclure de la collecte" : "🟠 Fête info (collecte maintenue)"}
+              </label>
+              <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
+                {editSkip
+                  ? "Aucune matinale attendue ce jour — la collecte YouTube sera ignorée."
+                  : "Certaines TV diffusent ce jour — tooltip affiché, collecte maintenue."}
+              </p>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={() => setEditing(null)}
+                className="flex-1 px-4 py-2 text-xs font-bold uppercase"
+                style={{ border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+                Annuler
+              </button>
+              <button type="submit" disabled={!editReason.trim() || saving}
+                className="flex-1 px-4 py-2 text-xs font-bold uppercase disabled:opacity-50"
+                style={{ background: "var(--accent)", color: "white" }}>
+                {saving ? "Sauvegarde…" : "Sauvegarder"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
 
       {/* Calendrier annuel */}
       {loading

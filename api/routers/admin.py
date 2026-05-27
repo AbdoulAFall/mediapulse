@@ -47,6 +47,10 @@ class ExcludedDayCreate(BaseModel):
     reason:           Optional[str] = None
     skip_collection:  bool = True     # False = fête info uniquement (tooltip), collecte maintenue
 
+class ExcludedDayUpdate(BaseModel):
+    reason:           Optional[str] = None
+    skip_collection:  Optional[bool] = None
+
 class MatinaleAdd(BaseModel):
     channel_id: int
     youtube_url: str
@@ -341,6 +345,21 @@ def add_excluded_day(body: ExcludedDayCreate, x_admin_token: str = Header(defaul
         )
     except Exception:
         raise HTTPException(status_code=409, detail="Ce jour est déjà enregistré.")
+    return {"ok": True}
+
+
+@router.patch("/admin/excluded-days/{day_id}")
+def update_excluded_day(day_id: int, body: ExcludedDayUpdate, x_admin_token: str = Header(default="")):
+    require_admin(x_admin_token)
+    fields, values = [], []
+    if body.reason is not None:
+        fields.append("reason = %s"); values.append(body.reason)
+    if body.skip_collection is not None:
+        fields.append("skip_collection = %s"); values.append(body.skip_collection)
+    if not fields:
+        raise HTTPException(status_code=400, detail="Aucun champ à modifier.")
+    values.append(day_id)
+    execute(f"UPDATE excluded_days SET {', '.join(fields)} WHERE id = %s", tuple(values))
     return {"ok": True}
 
 
