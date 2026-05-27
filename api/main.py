@@ -51,6 +51,94 @@ _DETECT_LIVE_END_H  = 10        # 10h UTC
 _DETECT_S           = 30 * 60   # toutes les 30 min
 
 
+def _seed_holidays():
+    """
+    Insère les jours fériés sénégalais dans excluded_days si absents (idempotent).
+    Couvre l'année précédente, l'année courante et la suivante.
+    Les week-ends sont ignorés (déjà auto-exclus côté détecteur).
+    """
+    from datetime import date as _date
+
+    FIXED_HOLIDAYS = {
+        (1,  1): "Jour de l'An",
+        (4,  4): "Fête de l'Indépendance",
+        (5,  1): "Fête du Travail",
+        (8, 15): "Assomption",
+        (11, 1): "Toussaint",
+        (12, 25): "Noël",
+    }
+
+    ISLAMIC_HOLIDAYS: list[tuple[_date, str]] = [
+        # Korité (Aïd el-Fitr)
+        (_date(2024, 4, 10), "Korité (Aïd el-Fitr)"),
+        (_date(2025, 3, 30), "Korité (Aïd el-Fitr)"),
+        (_date(2026, 3, 20), "Korité (Aïd el-Fitr)"),
+        (_date(2027, 3,  9), "Korité (Aïd el-Fitr)"),
+        # Tabaski (Aïd el-Adha)
+        (_date(2024, 6, 17), "Tabaski (Aïd el-Adha)"),
+        (_date(2025, 6,  7), "Tabaski (Aïd el-Adha)"),
+        (_date(2026, 5, 27), "Tabaski (Aïd el-Adha)"),
+        (_date(2027, 5, 17), "Tabaski (Aïd el-Adha)"),
+        # Tamkharit (Achoura)
+        (_date(2024, 7, 16), "Tamkharit (Achoura)"),
+        (_date(2025, 7,  5), "Tamkharit (Achoura)"),
+        (_date(2026, 6, 24), "Tamkharit (Achoura)"),
+        (_date(2027, 6, 14), "Tamkharit (Achoura)"),
+        # Gamou (Mawlid)
+        (_date(2024, 9, 15), "Gamou (Mawlid)"),
+        (_date(2025, 9,  4), "Gamou (Mawlid)"),
+        (_date(2026, 8, 25), "Gamou (Mawlid)"),
+        (_date(2027, 8, 14), "Gamou (Mawlid)"),
+    ]
+
+    now   = datetime.now(timezone.utc)
+    years = [now.year - 1, now.year, now.year + 1]
+    seeded = 0
+
+    # Migration préalable
+    try:
+        execute("ALTER TABLE excluded_days ADD COLUMN IF NOT EXISTS skip_collection BOOLEAN DEFAULT true")
+    except Exception:
+        pass
+
+    # Jours fixes
+    for year in years:
+        for (month, day), name in FIXED_HOLIDAYS.items():
+            try:
+                d = _date(year, month, day)
+                if d.weekday() >= 5:
+                    continue  # week-end → déjà exclu automatiquement
+                execute(
+                    "INSERT INTO excluded_days (date, reason, skip_collection) "
+                    "VALUES (%s, %s, %s) ON CONFLICT (date) DO NOTHING",
+                    (d.isoformat(), name, True),
+                )
+                seeded += 1
+            except Exception:
+                pass
+
+    # Jours islamiques
+    for d, name in ISLAMIC_HOLIDAYS:
+        if d.year not in years:
+            continue
+        if d.weekday() >= 5:
+            continue
+        try:
+            execute(
+                "INSERT INTO excluded_days (date, reason, skip_collection) "
+                "VALUES (%s, %s, %s) ON CONFLICT (date) DO NOTHING",
+                (d.isoformat(), name, True),
+            )
+            seeded += 1
+        except Exception:
+            pass
+
+    if seeded:
+        print(f"[startup] {seeded} jour(s) férié(s) ajouté(s) dans excluded_days.", flush=True)
+    else:
+        print("[startup] excluded_days déjà à jour (aucun nouveau jour férié).", flush=True)
+
+
 def _init_tables():
     """Crée les tables manquantes au démarrage (idempotent)."""
     statements = [
@@ -311,6 +399,10 @@ async def lifespan(app: FastAPI):
         print("[startup] Tables OK", flush=True)
     except Exception as e:
         print(f"[startup] _init_tables erreur (non bloquante) : {e}", flush=True)
+    try:
+        _seed_holidays()
+    except Exception as e:
+        print(f"[startup] _seed_holidays erreur (non bloquante) : {e}", flush=True)
     tasks = [
         asyncio.create_task(_refresh_today_loop()),
         asyncio.create_task(_refresh_smart_loop()),
