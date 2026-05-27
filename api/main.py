@@ -14,9 +14,16 @@ from database import execute, query
 from refresh import do_refresh_today, do_refresh_smart, do_refresh_missing_durations
 
 # Rend les modules du collector accessibles (même repo, Railway déploie depuis la racine)
-_COLLECTOR_PATH = os.path.join(os.path.dirname(__file__), "..", "collector")
-if os.path.isdir(_COLLECTOR_PATH) and _COLLECTOR_PATH not in sys.path:
-    sys.path.insert(0, os.path.abspath(_COLLECTOR_PATH))
+# os.path.abspath(__file__) garantit un chemin absolu même si uvicorn passe un chemin relatif
+_COLLECTOR_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "collector")
+)
+if os.path.isdir(_COLLECTOR_PATH):
+    if _COLLECTOR_PATH not in sys.path:
+        sys.path.insert(0, _COLLECTOR_PATH)
+    print(f"[config] collector path OK : {_COLLECTOR_PATH}", flush=True)
+else:
+    print(f"[config] ATTENTION collector path introuvable : {_COLLECTOR_PATH}", flush=True)
 
 YT_KEY        = os.environ.get("YOUTUBE_API_KEY", "")
 YT_BASE       = "https://www.googleapis.com/youtube/v3"
@@ -226,6 +233,7 @@ async def _detect_loop():
     Détecte les nouvelles matinales toutes les 30 min (5h–13h UTC, lun–ven).
     Remplace le workflow GitHub Actions detect.yml.
     """
+    print("[detect] Boucle démarrée — premier run dans 3 min.", flush=True)
     await asyncio.sleep(180)  # délai initial — laisse le temps à l'API de démarrer
     loop = asyncio.get_running_loop()
     while True:
@@ -239,12 +247,19 @@ async def _detect_loop():
                 return det.detect_matinales(channels, days=2)
             try:
                 n = await loop.run_in_executor(_DETECT_EXECUTOR, _run_detect)
+                ts = datetime.now(timezone.utc).strftime('%H:%M UTC')
                 if n:
-                    print(f"[detect] {n} nouvelle(s) matinale(s) — {datetime.now(timezone.utc).strftime('%H:%M UTC')}", flush=True)
+                    print(f"[detect] {n} nouvelle(s) matinale(s) — {ts}", flush=True)
                 else:
-                    print(f"[detect] Aucune nouvelle matinale — {datetime.now(timezone.utc).strftime('%H:%M UTC')}", flush=True)
+                    print(f"[detect] 0 nouvelle (jour férié, déjà en base, ou aucun live terminé) — {ts}", flush=True)
             except Exception as e:
-                print(f"[detect] Erreur : {e}", flush=True)
+                import traceback
+                print(f"[detect] ERREUR : {e}\n{traceback.format_exc()}", flush=True)
+        else:
+            # Hors fenêtre — log toutes les 2h pour confirmer que la boucle tourne
+            now2 = datetime.now(timezone.utc)
+            if now2.minute < 1:  # log uniquement aux heures rondes
+                print(f"[detect] Hors fenêtre ({now2.strftime('%H:%M UTC')}, fenêtre 5h-13h lun-ven) — en attente.", flush=True)
         await asyncio.sleep(_DETECT_S)
 
 
@@ -253,6 +268,7 @@ async def _detect_live_loop():
     Détecte les lives en cours toutes les 30 min (6h–10h UTC, lun–ven).
     Remplace le workflow GitHub Actions detect-live.yml.
     """
+    print("[detect-live] Boucle démarrée — premier run dans 3m30.", flush=True)
     await asyncio.sleep(210)  # décalé de 30s par rapport à detect pour éviter la contention
     loop = asyncio.get_running_loop()
     while True:
@@ -266,10 +282,11 @@ async def _detect_live_loop():
                 return det.detect_live_matinales(channels)
             try:
                 n = await loop.run_in_executor(_DETECT_EXECUTOR, _run_detect_live)
-                if n:
-                    print(f"[detect-live] {n} live(s) détecté(s) — {datetime.now(timezone.utc).strftime('%H:%M UTC')}", flush=True)
+                ts = datetime.now(timezone.utc).strftime('%H:%M UTC')
+                print(f"[detect-live] {n} live(s) détecté(s) — {ts}", flush=True)
             except Exception as e:
-                print(f"[detect-live] Erreur : {e}", flush=True)
+                import traceback
+                print(f"[detect-live] ERREUR : {e}\n{traceback.format_exc()}", flush=True)
         await asyncio.sleep(_DETECT_S)
 
 
