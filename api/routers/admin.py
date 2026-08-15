@@ -82,7 +82,9 @@ class ChannelUpdate(BaseModel):
 # ── YouTube helpers ───────────────────────────────────────────────────────────
 
 def _extract_video_id(url_or_id: str) -> str:
-    for pattern in [r"(?:v=|youtu\.be/|/embed/|/shorts/)([A-Za-z0-9_-]{11})"]:
+    for pattern in [
+        r"(?:v=|youtu\.be/|/embed/|/shorts/|/live/)([A-Za-z0-9_-]{11})",
+    ]:
         m = re.search(pattern, url_or_id)
         if m:
             return m.group(1)
