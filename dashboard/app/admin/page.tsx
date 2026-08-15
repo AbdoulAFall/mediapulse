@@ -1552,7 +1552,7 @@ function ToolsTab({ token }: { token: string }) {
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail);
       setDetectStatus("ok");
-      setDetectMsg(`✓ ${data.message} — workflow GitHub Actions lancé.`);
+      setDetectMsg(`✓ ${data.message}`);
     } catch (e: unknown) {
       setDetectStatus("err");
       setDetectMsg(`✗ ${e instanceof Error ? e.message : "Erreur inconnue"}`);
@@ -1655,8 +1655,8 @@ function ToolsTab({ token }: { token: string }) {
           Lancer une détection manuelle
         </p>
         <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
-          Déclenche le workflow GitHub Actions <code style={{ background: "var(--surface2)", padding: "1px 5px", fontSize: 11 }}>detect.yml</code> pour une date précise.
-          Utile pour rattraper un jour manqué ou forcer une re-détection en dehors de la boucle Railway automatique.
+          Lance une détection immédiate pour une date précise, directement sur Railway (même code que la boucle automatique).
+          Utile pour rattraper un jour manqué ou forcer une re-détection sans attendre la prochaine boucle.
         </p>
 
         <form onSubmit={doDetect} className="flex flex-wrap items-end gap-4">
@@ -1725,10 +1725,10 @@ function ToolsTab({ token }: { token: string }) {
           </p>
           <p>
             <span className="font-bold" style={{ color: "var(--ink)" }}>Détection manuelle</span>
-            {" "}— via ce formulaire (déclenche <code style={{ background: "var(--surface)", padding: "1px 5px" }}>detect.yml</code> sur GitHub Actions). Nécessite les variables <code style={{ background: "var(--surface)", padding: "1px 5px" }}>GITHUB_TOKEN</code> et <code style={{ background: "var(--surface)", padding: "1px 5px" }}>GITHUB_REPO</code> dans Railway.
+            {" "}— via ce formulaire, exécutée directement sur Railway (même fonction que les boucles automatiques). Aucune dépendance à GitHub Actions.
           </p>
           <p className="mt-1" style={{ opacity: 0.7 }}>
-            Variables Railway requises pour la détection manuelle : <strong>YOUTUBE_API_KEY</strong> (boucles auto) · <strong>GITHUB_TOKEN</strong> + <strong>GITHUB_REPO</strong> (déclenchement workflow manuel).
+            Variable Railway requise : <strong>YOUTUBE_API_KEY</strong>.
           </p>
         </div>
       </div>

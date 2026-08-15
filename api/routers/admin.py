@@ -422,8 +422,6 @@ def delete_subscriber(sub_id: int, x_admin_token: str = Header(default="")):
 RESEND_API_KEY  = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL      = os.environ.get("REPORT_FROM_EMAIL", "MediaPulse <onboarding@resend.dev>")
 DASHBOARD_URL   = os.environ.get("DASHBOARD_URL", "https://mediapulse.vercel.app")
-GITHUB_TOKEN    = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO     = os.environ.get("GITHUB_REPO", "AbdoulAFall/mediapulse")
 
 CHANNEL_COLORS = {
     "TFM": "#d0021b", "RTS": "#1a1714", "2STV": "#c0392b",
@@ -840,19 +838,17 @@ def delete_channel(channel_id: int, x_admin_token: str = Header(default="")):
     execute("DELETE FROM channels WHERE id = %s", (channel_id,))
 
 
-# ── Admin : Déclenchement détection via GitHub Actions ────────────────────────
+# ── Admin : Déclenchement détection manuelle (in-process, comme la boucle Railway) ─
 
 @router.post("/admin/detect")
 def trigger_detect(body: DetectBody, x_admin_token: str = Header(default="")):
     """
-    Déclenche le workflow GitHub Actions detect.yml pour une date spécifique.
+    Lance une détection immédiate pour une date/chaîne donnée, dans le process API
+    lui-même (même code que la boucle Railway `_detect_loop`). Ne dépend plus de
+    GitHub Actions ni de GITHUB_TOKEN.
     Calcule automatiquement le paramètre `days` depuis aujourd'hui.
-    Nécessite : GITHUB_TOKEN (PAT avec scope workflow) + GITHUB_REPO en variables Railway.
     """
     require_admin(x_admin_token)
-
-    if not GITHUB_TOKEN:
-        raise HTTPException(status_code=503, detail="GITHUB_TOKEN non configuré côté serveur.")
 
     # Valide la date cible
     try:
@@ -866,36 +862,29 @@ def trigger_detect(body: DetectBody, x_admin_token: str = Header(default="")):
 
     delta = (today - target_date).days + 1  # +1 pour inclure le jour cible lui-même
 
-    # Déclenche le workflow GitHub Actions detect.yml
-    workflow_file = "detect.yml"
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{workflow_file}/dispatches"
+    import storage as st
+    import detector as det
 
-    inputs: dict = {"days": str(delta)}
+    channels = st.get_active_channels()
+    if not channels:
+        raise HTTPException(status_code=503, detail="Aucune chaîne active en base.")
+
     if body.channel:
-        inputs["channel"] = body.channel.strip()
+        name_filter = body.channel.strip().lower()
+        channels = [c for c in channels if name_filter in c["name"].lower()]
+        if not channels:
+            raise HTTPException(status_code=404, detail=f"Aucune chaîne active ne correspond à '{body.channel}'.")
 
-    resp = requests.post(
-        url,
-        headers={
-            "Authorization": f"Bearer {GITHUB_TOKEN}",
-            "Accept":        "application/vnd.github+json",
-            "Content-Type":  "application/json",
-        },
-        data=json.dumps({"ref": "main", "inputs": inputs}),
-        timeout=15,
-    )
+    try:
+        n = det.detect_matinales(channels, days=delta)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur pendant la détection : {e}")
 
-    if resp.status_code == 204:
-        return {
-            "ok":      True,
-            "date":    str(target_date),
-            "days":    delta,
-            "channel": body.channel or "toutes",
-            "message": f"Détection lancée pour le {target_date} (fenêtre {delta}j).",
-        }
-    elif resp.status_code == 404:
-        raise HTTPException(status_code=404, detail=f"Workflow '{workflow_file}' introuvable dans {GITHUB_REPO}.")
-    elif resp.status_code == 422:
-        raise HTTPException(status_code=422, detail="Workflow non activable (vérifier que la branche 'main' existe et que le PAT a le scope 'workflow').")
-    else:
-        raise HTTPException(status_code=502, detail=f"Erreur GitHub API {resp.status_code} : {resp.text[:300]}")
+    return {
+        "ok":      True,
+        "date":    str(target_date),
+        "days":    delta,
+        "channel": body.channel or "toutes",
+        "new":     n,
+        "message": f"Détection terminée pour le {target_date} (fenêtre {delta}j) — {n} nouvelle(s) matinale(s).",
+    }
