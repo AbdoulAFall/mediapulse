@@ -1470,7 +1470,8 @@ function ChannelsTab({ token }: { token: string }) {
 
 function ToolsTab({ token }: { token: string }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [detectDate, setDetectDate]       = useState(today);
+  const [detectDateFrom, setDetectDateFrom] = useState(today);
+  const [detectDateTo, setDetectDateTo]     = useState(today);
   const [detectChannel, setDetectChannel] = useState("");
   const [detectStatus, setDetectStatus]   = useState<"idle"|"loading"|"ok"|"err">("idle");
   const [detectMsg, setDetectMsg]         = useState("");
@@ -1547,7 +1548,11 @@ function ToolsTab({ token }: { token: string }) {
       const r = await fetch(`${API_URL}/api/admin/detect`, {
         method:  "POST",
         headers: authHeaders(token),
-        body:    JSON.stringify({ date: detectDate, channel: detectChannel || null }),
+        body:    JSON.stringify({
+          date_from: detectDateFrom,
+          date_to:   detectDateTo || null,
+          channel:   detectChannel || null,
+        }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail);
@@ -1655,21 +1660,38 @@ function ToolsTab({ token }: { token: string }) {
           Lancer une détection manuelle
         </p>
         <p className="text-xs mb-5" style={{ color: "var(--text-muted)" }}>
-          Lance une détection immédiate pour une date précise, directement sur Railway (même code que la boucle automatique).
-          Utile pour rattraper un jour manqué ou forcer une re-détection sans attendre la prochaine boucle.
+          Lance une détection immédiate sur une plage de dates, directement sur Railway (même code que la boucle automatique).
+          Utile pour rattraper un jour manqué, une chaîne récemment ajoutée sur plusieurs mois, ou forcer une re-détection sans attendre la prochaine boucle.
         </p>
 
         <form onSubmit={doDetect} className="flex flex-wrap items-end gap-4">
-          {/* Date cible */}
+          {/* Date de début */}
           <div>
             <label className="text-xs font-bold block mb-1.5" style={{ color: "var(--text-muted)" }}>
-              Date cible *
+              Du *
             </label>
             <input
               type="date"
-              value={detectDate}
+              value={detectDateFrom}
+              max={detectDateTo || today}
+              onChange={(e) => { setDetectDateFrom(e.target.value); setDetectStatus("idle"); setDetectMsg(""); }}
+              required
+              className="text-xs p-2 outline-none"
+              style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}
+            />
+          </div>
+
+          {/* Date de fin */}
+          <div>
+            <label className="text-xs font-bold block mb-1.5" style={{ color: "var(--text-muted)" }}>
+              Au *
+            </label>
+            <input
+              type="date"
+              value={detectDateTo}
+              min={detectDateFrom}
               max={today}
-              onChange={(e) => { setDetectDate(e.target.value); setDetectStatus("idle"); setDetectMsg(""); }}
+              onChange={(e) => { setDetectDateTo(e.target.value); setDetectStatus("idle"); setDetectMsg(""); }}
               required
               className="text-xs p-2 outline-none"
               style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--ink)", fontFamily: "inherit" }}

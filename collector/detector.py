@@ -53,11 +53,15 @@ def sync_channels() -> list[dict]:
     return channels
 
 
-def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) -> int:
+def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS, until: str | None = None) -> int:
     """
     Pour chaque chaîne, collecte tous les lives de la fenêtre matinale
-    sur les 60 derniers jours, groupe par jour, sélectionne le meilleur
+    sur les `days` derniers jours, groupe par jour, sélectionne le meilleur
     candidat et l'insère en base.
+
+    until : date (YYYY-MM-DD) optionnelle — borne supérieure de la fenêtre.
+            Si fournie, seuls les jours <= until sont considérés (permet un
+            rattrapage sur une plage de dates passée sans aller jusqu'à aujourd'hui).
     """
     # On tronque à minuit pour éviter de couper le dernier jour en plein milieu
     since = (datetime.now(timezone.utc) - timedelta(days=days)).replace(
@@ -91,6 +95,8 @@ def detect_matinales(channels: list[dict], days: int = DEFAULT_LOOKBACK_DAYS) ->
                 if not has_hints and not in_window(video["published_at"]):
                     continue
                 day = video["published_at"][:10]
+                if until and day > until:
+                    continue
                 by_day[day].append(video)
 
             # Pour chaque jour : sélectionner le meilleur candidat

@@ -522,8 +522,9 @@ class ReportSendBody(BaseModel):
     date: Optional[str] = None   # YYYY-MM-DD, défaut = aujourd'hui
 
 class DetectBody(BaseModel):
-    date: str                    # YYYY-MM-DD : jour cible à (re)détecter
-    channel: Optional[str] = None  # filtre chaîne (ex: "TFM"), vide = toutes
+    date_from: str                     # YYYY-MM-DD : début de la plage à (re)détecter
+    date_to:   Optional[str] = None    # YYYY-MM-DD : fin de la plage (défaut = date_from, jour unique)
+    channel:   Optional[str] = None    # filtre chaîne (ex: "TFM"), vide = toutes
 
 
 @router.post("/admin/report/send")
@@ -843,24 +844,33 @@ def delete_channel(channel_id: int, x_admin_token: str = Header(default="")):
 @router.post("/admin/detect")
 def trigger_detect(body: DetectBody, x_admin_token: str = Header(default="")):
     """
-    Lance une détection immédiate pour une date/chaîne donnée, dans le process API
-    lui-même (même code que la boucle Railway `_detect_loop`). Ne dépend plus de
-    GitHub Actions ni de GITHUB_TOKEN.
-    Calcule automatiquement le paramètre `days` depuis aujourd'hui.
+    Lance une détection immédiate sur une plage de dates/chaîne donnée, dans le
+    process API lui-même (même code que la boucle Railway `_detect_loop`). Ne
+    dépend plus de GitHub Actions ni de GITHUB_TOKEN.
+    Calcule automatiquement le paramètre `days` (lookback) depuis aujourd'hui,
+    et borne la fenêtre haute à `date_to` pour ne pas déborder sur les jours
+    déjà couverts par la boucle automatique.
     """
     require_admin(x_admin_token)
 
-    # Valide la date cible
     try:
-        target_date = datetime.strptime(body.date, "%Y-%m-%d").date()
+        date_from = datetime.strptime(body.date_from, "%Y-%m-%d").date()
     except ValueError:
-        raise HTTPException(status_code=400, detail="Format de date invalide — utiliser YYYY-MM-DD.")
+        raise HTTPException(status_code=400, detail="Format de date de début invalide — utiliser YYYY-MM-DD.")
+
+    date_to_str = body.date_to or body.date_from
+    try:
+        date_to = datetime.strptime(date_to_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Format de date de fin invalide — utiliser YYYY-MM-DD.")
 
     today = datetime.now(timezone.utc).date()
-    if target_date > today:
-        raise HTTPException(status_code=400, detail="La date cible ne peut pas être dans le futur.")
+    if date_to > today:
+        raise HTTPException(status_code=400, detail="La date de fin ne peut pas être dans le futur.")
+    if date_from > date_to:
+        raise HTTPException(status_code=400, detail="La date de début doit précéder la date de fin.")
 
-    delta = (today - target_date).days + 1  # +1 pour inclure le jour cible lui-même
+    delta = (today - date_from).days + 1  # +1 pour inclure le premier jour de la plage
 
     import storage as st
     import detector as det
@@ -876,15 +886,17 @@ def trigger_detect(body: DetectBody, x_admin_token: str = Header(default="")):
             raise HTTPException(status_code=404, detail=f"Aucune chaîne active ne correspond à '{body.channel}'.")
 
     try:
-        n = det.detect_matinales(channels, days=delta)
+        n = det.detect_matinales(channels, days=delta, until=str(date_to))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur pendant la détection : {e}")
 
+    range_label = str(date_from) if date_from == date_to else f"{date_from} → {date_to}"
     return {
-        "ok":      True,
-        "date":    str(target_date),
-        "days":    delta,
-        "channel": body.channel or "toutes",
-        "new":     n,
-        "message": f"Détection terminée pour le {target_date} (fenêtre {delta}j) — {n} nouvelle(s) matinale(s).",
+        "ok":        True,
+        "date_from": str(date_from),
+        "date_to":   str(date_to),
+        "days":      delta,
+        "channel":   body.channel or "toutes",
+        "new":       n,
+        "message":   f"Détection terminée pour {range_label} — {n} nouvelle(s) matinale(s).",
     }
